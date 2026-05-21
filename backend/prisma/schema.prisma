@@ -1,0 +1,276 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum ShotStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum FieldGroup {
+  CREW
+  CLIENT
+  LOGISTICS
+}
+
+model Organisation {
+  id               String    @id @default(cuid())
+  name             String
+  slug             String    @unique
+  logoUrl          String?
+  agencyName       String?
+  footerText       String?
+  defaultCrewFields     Json?
+  defaultClientFields   Json?
+  defaultLogisticsFields Json?
+  createdAt        DateTime  @default(now())
+  users            User[]
+  projects         Project[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  avatarUrl      String?
+  role           Role         @default(VIEWER)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  lastLoginAt    DateTime?
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  organisationId String
+  projects       Project[]
+  inviteTokens   InviteToken[]
+  passwordResets PasswordReset[]
+
+  @@index([organisationId])
+}
+
+model InviteToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  role      Role     @default(VIEWER)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+  organisationId String
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  name           String
+  clientName     String?
+  location       String?
+  startDate      DateTime?
+  endDate        DateTime?
+  status         ProjectStatus @default(DRAFT)
+  agencyName     String?
+  footerText     String?
+  organisation   Organisation  @relation(fields: [organisationId], references: [id])
+  organisationId String
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  photographyTypes PhotographyType[]
+  shootingDays   ShootingDay[]
+  shotSections   ShotSection[]
+  shotCategories ShotCategory[]
+  shotLocations  ShotLocation[]
+  shots          Shot[]
+  callSheets     CallSheet[]
+
+  @@index([organisationId])
+}
+
+model PhotographyType {
+  id          String    @id @default(cuid())
+  name        String
+  hexColour   String
+  sortOrder   Int       @default(0)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  shootingDays ShootingDay[]
+  shotCategories ShotCategory[]
+
+  @@index([projectId])
+}
+
+model ShootingDay {
+  id                 String          @id @default(cuid())
+  dayNumber          Int
+  calendarDate       DateTime
+  label              String?
+  project            Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId          String
+  photographyType    PhotographyType? @relation(fields: [photographyTypeId], references: [id])
+  photographyTypeId  String?
+  shotAssignments    ShotDayAssignment[]
+  callSheet          CallSheet?
+
+  @@unique([projectId, dayNumber])
+  @@index([projectId])
+}
+
+model ShotSection {
+  id          String         @id @default(cuid())
+  name        String
+  sortOrder   Int            @default(0)
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  categories  ShotCategory[]
+
+  @@index([projectId])
+}
+
+model ShotCategory {
+  id                 String          @id @default(cuid())
+  name               String
+  sortOrder          Int             @default(0)
+  isVisible          Boolean         @default(true)
+  section            ShotSection     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId          String
+  project            Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId          String
+  photographyType    PhotographyType? @relation(fields: [photographyTypeId], references: [id])
+  photographyTypeId  String?
+  locations          ShotLocation[]
+
+  @@index([sectionId])
+  @@index([projectId])
+}
+
+model ShotLocation {
+  id          String       @id @default(cuid())
+  name        String
+  sortOrder   Int          @default(0)
+  isVisible   Boolean      @default(true)
+  category    ShotCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId  String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  shots       Shot[]
+
+  @@index([categoryId])
+  @@index([projectId])
+}
+
+model Shot {
+  id                 String    @id @default(cuid())
+  description        String
+  timing             String?
+  notes              String?
+  sortOrder          Int       @default(0)
+  isVisible          Boolean   @default(true)
+  status             ShotStatus @default(PENDING)
+  tickColourOverride String?
+  location           ShotLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId         String
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId          String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  dayAssignments     ShotDayAssignment[]
+  callSheetShots     CallSheetShot[]
+
+  @@index([locationId])
+  @@index([projectId])
+}
+
+model ShotDayAssignment {
+  id            String      @id @default(cuid())
+  shot          Shot        @relation(fields: [shotId], references: [id], onDelete: Cascade)
+  shotId        String
+  shootingDay   ShootingDay @relation(fields: [shootingDayId], references: [id], onDelete: Cascade)
+  shootingDayId String
+  tickColour    String?
+
+  @@unique([shotId, shootingDayId])
+  @@index([shotId])
+  @@index([shootingDayId])
+}
+
+model CallSheet {
+  id            String    @id @default(cuid())
+  notes         String?
+  isLocked      Boolean   @default(false)
+  shootingDay   ShootingDay @relation(fields: [shootingDayId], references: [id], onDelete: Cascade)
+  shootingDayId String    @unique
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  fields        CallSheetField[]
+  shots         CallSheetShot[]
+
+  @@index([projectId])
+}
+
+model CallSheetField {
+  id          String     @id @default(cuid())
+  label       String
+  value       String?
+  isVisible   Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  fieldGroup  FieldGroup
+  callSheet   CallSheet  @relation(fields: [callSheetId], references: [id], onDelete: Cascade)
+  callSheetId String
+
+  @@index([callSheetId])
+}
+
+model CallSheetShot {
+  id             String    @id @default(cuid())
+  sortOrder      Int       @default(0)
+  statusOverride ShotStatus?
+  callSheet      CallSheet @relation(fields: [callSheetId], references: [id], onDelete: Cascade)
+  callSheetId    String
+  shot           Shot      @relation(fields: [shotId], references: [id], onDelete: Cascade)
+  shotId         String
+
+  @@unique([callSheetId, shotId])
+  @@index([callSheetId])
+}
