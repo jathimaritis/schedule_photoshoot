@@ -1,10 +1,9 @@
 services:
   - type: web
-    name: photoshoot-scheduler-api
+    name: photoshoot-scheduler
     env: node
-    rootDir: backend
-    buildCommand: npm install && npm run build && npx prisma migrate deploy
-    startCommand: node dist/index.js
+    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build && npx prisma migrate deploy
+    startCommand: node backend/dist/index.js
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -17,7 +16,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: CLIENT_URL
-        value: https://photoshoot-scheduler-web.onrender.com
+        value: https://photoshoot-scheduler.onrender.com
+      - key: PORT
+        value: "3000"
       - key: SMTP_HOST
         value: ""
       - key: SMTP_PORT
@@ -28,19 +29,6 @@ services:
         value: ""
       - key: SMTP_FROM
         value: ""
-
-  - type: static
-    name: photoshoot-scheduler-web
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://photoshoot-scheduler-api.onrender.com
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
 databases:
   - name: photoshoot-scheduler-db
