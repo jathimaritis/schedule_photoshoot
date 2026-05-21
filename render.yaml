@@ -3,8 +3,8 @@ services:
     name: photoshoot-scheduler
     env: node
     buildCommand: >-
-      cd frontend && npm install && npm run build &&
-      cd ../backend && npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+      cd frontend && npm install --include=dev && npm run build &&
+      cd ../backend && npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy
     startCommand: node backend/dist/index.js
     envVars:
       - key: DATABASE_URL
