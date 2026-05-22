@@ -36,17 +36,17 @@ async function getProject(projectId: string, organisationId: string) {
   return prisma.project.findFirst({ where: { id: projectId, organisationId } });
 }
 
-function buildDefaultFields(callSheetId: string) {
+function buildDefaultFields() {
   const fields = [];
   let order = 0;
   for (const label of DEFAULT_CREW_FIELDS) {
-    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'CREW' as FieldGroup, callSheetId });
+    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'CREW' as FieldGroup });
   }
   for (const label of DEFAULT_CLIENT_FIELDS) {
-    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'CLIENT' as FieldGroup, callSheetId });
+    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'CLIENT' as FieldGroup });
   }
   for (const label of DEFAULT_LOGISTICS_FIELDS) {
-    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'LOGISTICS' as FieldGroup, callSheetId });
+    fields.push({ label, value: null, isVisible: true, sortOrder: order++, fieldGroup: 'LOGISTICS' as FieldGroup });
   }
   return fields;
 }
@@ -83,7 +83,7 @@ router.post('/generate', requireMinRole('EDITOR'), async (req: Request, res: Res
       data: {
         shootingDayId: day.id,
         projectId: project.id,
-        fields: { create: buildDefaultFields('') },
+        fields: { create: buildDefaultFields() },
       },
     });
 
@@ -128,7 +128,7 @@ router.get('/:dayId', async (req: Request, res: Response): Promise<void> => {
       data: {
         shootingDayId: day.id,
         projectId: project.id,
-        fields: { create: buildDefaultFields('') },
+        fields: { create: buildDefaultFields() },
       },
       include: {
         fields: { orderBy: [{ fieldGroup: 'asc' }, { sortOrder: 'asc' }] },
