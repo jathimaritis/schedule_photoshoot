@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Pin, GripVertical, Plus, Upload, ChevronsDownUp, ChevronsUpDown, Search, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pin, GripVertical, Plus, Upload, ChevronsDownUp, ChevronsUpDown, Search, Check, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -534,6 +534,17 @@ function SectionActions({ section, projectId, types }: { section: ShotSection; p
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
+      <button
+        onClick={async () => {
+          if (!confirm(`Delete section "${section.name}" and all its contents?`)) return;
+          await projectsApi.deleteSection(projectId, section.id);
+          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+        }}
+        className="px-2 py-0.5 rounded text-xs text-white/50 hover:text-red-300 hover:bg-white/10"
+        title="Delete section"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
@@ -553,6 +564,17 @@ function CategoryActions({ cat, section: _section, projectId, types: _types }: {
         title="Add location"
       >
         <Plus className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={async () => {
+          if (!confirm(`Delete category "${cat.name}" and all its contents?`)) return;
+          await projectsApi.deleteCategory(projectId, cat.id);
+          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+        }}
+        className="px-2 py-0.5 rounded text-xs text-white/50 hover:text-red-300 hover:bg-white/10"
+        title="Delete category"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
       </button>
     </div>
   );
