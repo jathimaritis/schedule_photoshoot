@@ -133,9 +133,10 @@ model PhotographyType {
   sortOrder   Int       @default(0)
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId   String
-  shootingDays ShootingDay[]
+  shootingDays   ShootingDay[]
   shotCategories ShotCategory[]
-  shotSections ShotSection[]
+  shotSections   ShotSection[]
+  shotLocations  ShotLocation[]
 
   @@index([projectId])
 }
@@ -188,18 +189,21 @@ model ShotCategory {
 }
 
 model ShotLocation {
-  id          String       @id @default(cuid())
-  name        String
-  sortOrder   Int          @default(0)
-  isVisible   Boolean      @default(true)
-  category    ShotCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  categoryId  String
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  shots       Shot[]
+  id                String           @id @default(cuid())
+  name              String
+  sortOrder         Int              @default(0)
+  isVisible         Boolean          @default(true)
+  category          ShotCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId        String
+  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId         String
+  photographyType   PhotographyType? @relation(fields: [photographyTypeId], references: [id])
+  photographyTypeId String?
+  shots             Shot[]
 
   @@index([categoryId])
   @@index([projectId])
+  @@index([photographyTypeId])
 }
 
 model Shot {

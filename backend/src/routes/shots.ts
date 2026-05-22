@@ -23,6 +23,7 @@ const locationSchema = z.object({
   sortOrder: z.number().int().optional(),
   isVisible: z.boolean().optional(),
   categoryId: z.string(),
+  photographyTypeId: z.string().optional().nullable(),
 });
 const shotSchema = z.object({
   description: z.string().min(1),
@@ -61,6 +62,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
           locations: {
             orderBy: { sortOrder: 'asc' },
             include: {
+              photographyType: true,
               shots: {
                 orderBy: { sortOrder: 'asc' },
                 include: { dayAssignments: { include: { shootingDay: true } } },

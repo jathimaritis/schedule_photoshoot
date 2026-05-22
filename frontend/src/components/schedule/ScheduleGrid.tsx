@@ -479,6 +479,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
 
                             {!catCollapsed && cat.locations.map((loc) => {
                               const locCollapsed = collapsedLocations.has(loc.id);
+                              const tickColour = loc.photographyType?.hexColour ?? sectionColour;
                               return (
                                 <>
                                   {/* Location row */}
@@ -488,9 +489,9 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                         <button onClick={() => toggleLocationCollapse(loc.id)} className="text-gray-500 hover:text-gray-700">
                                           {locCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                         </button>
-                                        <Pin className="w-3 h-3 text-gray-400" />
+                                        <Pin className="w-3 h-3" style={{ color: tickColour }} />
                                         <span className="font-semibold text-sm text-gray-800">{loc.name}</span>
-                                        <LocationActions loc={loc} cat={cat} projectId={projectId} />
+                                        <LocationActions loc={loc} cat={cat} projectId={projectId} types={types} />
                                       </div>
                                     </td>
                                     <td className="sticky left-[280px] z-10 bg-[#F0F0F0] border-b border-gray-200" />
@@ -505,7 +506,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                           shot={shot}
                                           days={days}
                                           assignments={shot.dayAssignments ?? []}
-                                          sectionColour={sectionColour}
+                                          sectionColour={tickColour}
                                           onToggle={(shotId, day, assignmentId) =>
                                             toggleAssignment.mutate({ shotId, day, assignmentId })
                                           }
@@ -632,10 +633,24 @@ function CategoryActions({ cat, section: _section, projectId, types: _types }: {
   );
 }
 
-function LocationActions({ loc, cat: _cat, projectId }: { loc: ShotLocation; cat: ShotCategory; projectId: string }) {
+function LocationActions({ loc, cat: _cat, projectId, types }: { loc: ShotLocation; cat: ShotCategory; projectId: string; types: PhotographyType[] }) {
   const queryClient = useQueryClient();
   return (
     <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={loc.photographyTypeId ?? ''}
+        onChange={async (e) => {
+          await projectsApi.updateLocation(projectId, loc.id, { photographyTypeId: e.target.value || null });
+          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+        }}
+        className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-600 cursor-pointer focus:outline-none"
+        title="Photography type override"
+      >
+        <option value="">Inherit</option>
+        {types.map((t) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
       <button
         onClick={async () => {
           if (!confirm(`Delete location "${loc.name}"?`)) return;

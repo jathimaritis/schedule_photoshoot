@@ -110,6 +110,8 @@ export interface ShotLocation {
   isVisible: boolean;
   categoryId: string;
   projectId: string;
+  photographyTypeId?: string | null;
+  photographyType?: PhotographyType | null;
   shots: Shot[];
 }
 
