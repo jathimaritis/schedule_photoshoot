@@ -10,7 +10,7 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-const sectionSchema = z.object({ name: z.string().min(1), sortOrder: z.number().int().optional() });
+const sectionSchema = z.object({ name: z.string().min(1), sortOrder: z.number().int().optional(), photographyTypeId: z.string().optional().nullable() });
 const categorySchema = z.object({
   name: z.string().min(1),
   sortOrder: z.number().int().optional(),
@@ -54,10 +54,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     where: { projectId: project.id },
     orderBy: { sortOrder: 'asc' },
     include: {
+      photographyType: true,
       categories: {
         orderBy: { sortOrder: 'asc' },
         include: {
-          photographyType: true,
           locations: {
             orderBy: { sortOrder: 'asc' },
             include: {

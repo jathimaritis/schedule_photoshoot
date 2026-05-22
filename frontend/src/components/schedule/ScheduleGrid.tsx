@@ -8,6 +8,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { projectsApi } from '../../api/projects';
 import { useUiStore } from '../../stores/uiStore';
 import { ShotSection, ShotCategory, ShotLocation, Shot, ShootingDay, PhotographyType } from '../../types';
+import Modal from '../ui/Modal';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import toast from 'react-hot-toast';
 
 interface ScheduleGridProps {
@@ -24,12 +27,12 @@ interface TickCellProps {
   assignments: Array<{ id: string; shootingDayId: string; tickColour?: string | null }>;
   tickColourOverride?: string | null;
   onToggle: (shotId: string, day: ShootingDay, assignmentId?: string) => void;
-  categoryColour: string;
+  sectionColour: string;
 }
 
-function TickCell({ shotId, day, assignments, tickColourOverride, onToggle, categoryColour }: TickCellProps) {
+function TickCell({ shotId, day, assignments, tickColourOverride, onToggle, sectionColour }: TickCellProps) {
   const assignment = assignments.find((a) => a.shootingDayId === day.id);
-  const colour = tickColourOverride ?? assignment?.tickColour ?? day.photographyType?.hexColour ?? categoryColour;
+  const colour = tickColourOverride ?? assignment?.tickColour ?? sectionColour;
 
   return (
     <td
@@ -94,7 +97,7 @@ function SortableShot({
   shot,
   days,
   assignments,
-  categoryColour,
+  sectionColour,
   onToggle,
   onUpdate,
   isEven,
@@ -102,7 +105,7 @@ function SortableShot({
   shot: Shot;
   days: ShootingDay[];
   assignments: Array<{ id: string; shootingDayId: string; tickColour?: string | null }>;
-  categoryColour: string;
+  sectionColour: string;
   onToggle: (shotId: string, day: ShootingDay, assignmentId?: string) => void;
   onUpdate: (shotId: string, data: Partial<Shot>) => Promise<void>;
   isEven: boolean;
@@ -139,7 +142,7 @@ function SortableShot({
           assignments={assignments}
           tickColourOverride={shot.tickColourOverride}
           onToggle={onToggle}
-          categoryColour={categoryColour}
+          sectionColour={sectionColour}
         />
       ))}
     </tr>
@@ -151,6 +154,9 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
   const setSaveStatus = useUiStore((s) => s.setSaveStatus);
   const { collapsedSections, collapsedCategories, collapsedLocations, toggleSectionCollapse, toggleCategoryCollapse, toggleLocationCollapse, collapseAll, expandAll } = useUiStore();
   const [search, setSearch] = useState('');
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [newSectionName, setNewSectionName] = useState('');
+  const [newSectionTypeId, setNewSectionTypeId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: sections = [], isLoading } = useQuery({
@@ -253,10 +259,16 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
   };
 
   const addSection = async () => {
-    const name = prompt('Section name:');
-    if (!name) return;
-    await projectsApi.createSection(projectId, { name, sortOrder: sections.length });
+    if (!newSectionName.trim()) return;
+    await projectsApi.createSection(projectId, {
+      name: newSectionName.trim(),
+      sortOrder: sections.length,
+      photographyTypeId: newSectionTypeId || null,
+    });
     queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+    setNewSectionName('');
+    setNewSectionTypeId('');
+    setAddSectionOpen(false);
   };
 
   const filteredSections = search
@@ -319,12 +331,55 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
         <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} />
 
         <button
-          onClick={addSection}
+          onClick={() => setAddSectionOpen(true)}
           className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#1A1A2E] text-white rounded-md hover:bg-[#2C2C54]"
         >
           <Plus className="w-3.5 h-3.5" /> Section
         </button>
       </div>
+
+      <Modal open={addSectionOpen} onClose={() => setAddSectionOpen(false)} title="Add Section" size="sm">
+        <div className="space-y-4">
+          <Input
+            label="Section name"
+            value={newSectionName}
+            onChange={(e) => setNewSectionName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addSection(); }}
+            autoFocus
+          />
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Photography type</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setNewSectionTypeId('')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-full text-sm border-2 transition-colors',
+                  !newSectionTypeId ? 'border-gray-800 bg-gray-100 font-medium' : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                None
+              </button>
+              {types.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setNewSectionTypeId(t.id)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-full text-sm text-white border-2 transition-opacity',
+                    newSectionTypeId === t.id ? 'border-white shadow-md opacity-100' : 'border-transparent opacity-70 hover:opacity-90'
+                  )}
+                  style={{ backgroundColor: t.hexColour }}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setAddSectionOpen(false)}>Cancel</Button>
+            <Button onClick={addSection} disabled={!newSectionName.trim()}>Add Section</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Grid */}
       <div className="flex-1 overflow-auto scrollbar-thin">
@@ -338,18 +393,6 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
 
             {/* Header */}
             <thead className="sticky top-0 z-20">
-              {/* Category colour band */}
-              <tr style={{ height: 24 }}>
-                <th className="bg-[#2A3A5C]" />
-                <th className="bg-[#2A3A5C]" />
-                {days.map((d) => {
-                  const type = types.find((t) => t.id === d.photographyTypeId);
-                  return (
-                    <th key={d.id} style={{ backgroundColor: type?.hexColour ?? '#2A3A5C' }} />
-                  );
-                })}
-              </tr>
-              {/* Day headers */}
               <tr style={{ height: 48 }}>
                 <th className="bg-[#2A3A5C] text-white text-xs font-bold text-left px-3 border-r border-white/20 sticky left-0 z-30">
                   SHOT / LOCATION
@@ -357,23 +400,19 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                 <th className="bg-[#2A3A5C] text-white text-xs font-bold px-2 sticky left-[280px] z-30 border-r border-white/20">
                   TIMING
                 </th>
-                {days.map((d) => {
-                  const type = types.find((t) => t.id === d.photographyTypeId);
-                  return (
-                    <th
-                      key={d.id}
-                      className="text-white text-xs font-bold text-center px-1 border-r border-white/10"
-                      style={{ backgroundColor: type?.hexColour ?? '#2A3A5C' }}
-                    >
-                      <div className="leading-tight">
-                        <div>Day {d.dayNumber}</div>
-                        <div className="font-normal opacity-80 text-[10px]">
-                          {new Date(d.calendarDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
-                        </div>
+                {days.map((d) => (
+                  <th
+                    key={d.id}
+                    className="bg-[#2A3A5C] text-white text-xs font-bold text-center px-1 border-r border-white/10"
+                  >
+                    <div className="leading-tight">
+                      <div>Day {d.dayNumber}</div>
+                      <div className="font-normal opacity-80 text-[10px]">
+                        {new Date(d.calendarDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
                       </div>
-                    </th>
-                  );
-                })}
+                    </div>
+                  </th>
+                ))}
               </tr>
             </thead>
 
@@ -387,6 +426,8 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
               ) : (
                 filteredSections.map((section) => {
                   const sectionCollapsed = collapsedSections.has(section.id);
+                  const sectionColour = section.photographyType?.hexColour ?? '#2C2C54';
+
                   return (
                     <>
                       {/* Section row */}
@@ -394,7 +435,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                         <td
                           colSpan={2 + days.length}
                           className="px-3 py-2 cursor-pointer select-none"
-                          style={{ backgroundColor: '#2C2C54' }}
+                          style={{ backgroundColor: sectionColour }}
                           onClick={() => toggleSectionCollapse(section.id)}
                         >
                           <div className="flex items-center gap-2">
@@ -413,17 +454,15 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
 
                       {!sectionCollapsed && section.categories.map((cat) => {
                         const catCollapsed = collapsedCategories.has(cat.id);
-                        const catType = types.find((t) => t.id === cat.photographyTypeId);
-                        const catColour = catType?.hexColour ?? '#2C2C54';
 
                         return (
                           <>
-                            {/* Category row */}
+                            {/* Category row — inherits section colour at reduced opacity */}
                             <tr key={`cat-${cat.id}`}>
                               <td
                                 colSpan={2 + days.length}
                                 className="px-4 py-1.5 cursor-pointer select-none"
-                                style={{ backgroundColor: catColour }}
+                                style={{ backgroundColor: sectionColour, filter: 'brightness(1.15)' }}
                                 onClick={() => toggleCategoryCollapse(cat.id)}
                               >
                                 <div className="flex items-center gap-2">
@@ -466,7 +505,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                           shot={shot}
                                           days={days}
                                           assignments={shot.dayAssignments ?? []}
-                                          categoryColour={catColour}
+                                          sectionColour={sectionColour}
                                           onToggle={(shotId, day, assignmentId) =>
                                             toggleAssignment.mutate({ shotId, day, assignmentId })
                                           }
@@ -521,12 +560,25 @@ function SectionActions({ section, projectId, types }: { section: ShotSection; p
   const queryClient = useQueryClient();
   return (
     <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={section.photographyTypeId ?? ''}
+        onChange={async (e) => {
+          await projectsApi.updateSection(projectId, section.id, { photographyTypeId: e.target.value || null });
+          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+        }}
+        className="text-xs bg-white/10 text-white border border-white/20 rounded px-1 py-0.5 cursor-pointer focus:outline-none"
+        title="Photography type"
+      >
+        <option value="" style={{ backgroundColor: '#1A1A2E' }}>No type</option>
+        {types.map((t) => (
+          <option key={t.id} value={t.id} style={{ backgroundColor: t.hexColour }}>{t.name}</option>
+        ))}
+      </select>
       <button
         onClick={async () => {
           const name = prompt('Add category:', '');
           if (!name) return;
-          const typeId = types.length === 1 ? types[0].id : undefined;
-          await projectsApi.createCategory(projectId, { name, sectionId: section.id, photographyTypeId: typeId ?? null });
+          await projectsApi.createCategory(projectId, { name, sectionId: section.id });
           queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
         }}
         className="px-2 py-0.5 rounded text-xs text-white/70 hover:text-white hover:bg-white/10"

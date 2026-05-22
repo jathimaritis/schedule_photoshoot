@@ -86,6 +86,8 @@ export interface ShotSection {
   name: string;
   sortOrder: number;
   projectId: string;
+  photographyTypeId?: string | null;
+  photographyType?: PhotographyType | null;
   categories: ShotCategory[];
 }
 

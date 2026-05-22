@@ -6,7 +6,18 @@
       "Bash(sudo chown -R ioannis /Users/ioannis/.npm)",
       "Bash(npx tsc *)",
       "Bash(npx prisma *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(git stash *)",
+      "Bash(git pull *)",
+      "Bash(git rebase *)",
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(git *)",
+      "Bash(GIT_EDITOR=\"echo\" git rebase *)",
+      "Bash(mkdir -p prisma/migrations/20260521000000_init)"
     ]
   }
 }

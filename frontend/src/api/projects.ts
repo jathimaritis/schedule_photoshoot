@@ -51,9 +51,9 @@ export const projectsApi = {
     return api.post(`/projects/${id}/shots/import`, form).then((r) => r.data);
   },
 
-  createSection: (id: string, data: { name: string; sortOrder?: number }) =>
+  createSection: (id: string, data: { name: string; sortOrder?: number; photographyTypeId?: string | null }) =>
     api.post(`/projects/${id}/shots/sections`, data).then((r) => r.data),
-  updateSection: (id: string, sectionId: string, data: Partial<{ name: string; sortOrder: number }>) =>
+  updateSection: (id: string, sectionId: string, data: Partial<{ name: string; sortOrder: number; photographyTypeId: string | null }>) =>
     api.put(`/projects/${id}/shots/sections/${sectionId}`, data).then((r) => r.data),
   deleteSection: (id: string, sectionId: string) =>
     api.delete(`/projects/${id}/shots/sections/${sectionId}`).then((r) => r.data),

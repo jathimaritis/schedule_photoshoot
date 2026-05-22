@@ -35,7 +35,7 @@ export default function NewProjectPage() {
   const [types, setTypes] = useState(DEFAULT_TYPES);
 
   // Step 3: Shooting days
-  const [days, setDays] = useState<Array<{ calendarDate: string; label: string; typeIdx: number | null }>>([]);
+  const [days, setDays] = useState<Array<{ calendarDate: string; label: string }>>([]);
 
   const createProject = useMutation({
     mutationFn: async () => {
@@ -44,7 +44,7 @@ export default function NewProjectPage() {
         status: status as 'DRAFT' | 'ACTIVE', startDate: startDate ? new Date(startDate).toISOString() : undefined,
         endDate: endDate ? new Date(endDate).toISOString() : undefined,
       });
-      const createdTypes = await Promise.all(
+      await Promise.all(
         types.map((t, i) => projectsApi.createType(project.id, { ...t, sortOrder: i }))
       );
       if (days.length > 0) {
@@ -52,7 +52,6 @@ export default function NewProjectPage() {
           dayNumber: i + 1,
           calendarDate: new Date(d.calendarDate).toISOString(),
           label: d.label || undefined,
-          photographyTypeId: d.typeIdx !== null ? createdTypes[d.typeIdx]?.id : undefined,
         })));
       }
       return project;
@@ -72,7 +71,7 @@ export default function NewProjectPage() {
     const newDays = [];
     let current = start;
     while (current <= end) {
-      newDays.push({ calendarDate: format(current, 'yyyy-MM-dd'), label: '', typeIdx: null });
+      newDays.push({ calendarDate: format(current, 'yyyy-MM-dd'), label: '' });
       current = addDays(current, 1);
     }
     setDays(newDays);
@@ -169,14 +168,6 @@ export default function NewProjectPage() {
                     onChange={(e) => setDays((ds) => ds.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                     className="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
                   />
-                  <select
-                    value={d.typeIdx ?? ''}
-                    onChange={(e) => setDays((ds) => ds.map((x, j) => j === i ? { ...x, typeIdx: e.target.value ? parseInt(e.target.value) : null } : x))}
-                    className="text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
-                  >
-                    <option value="">No type</option>
-                    {types.map((t, ti) => <option key={ti} value={ti}>{t.name}</option>)}
-                  </select>
                   <button onClick={() => setDays((ds) => ds.filter((_, j) => j !== i))} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
