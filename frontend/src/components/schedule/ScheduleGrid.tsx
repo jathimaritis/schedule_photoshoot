@@ -454,15 +454,16 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
 
                       {!sectionCollapsed && section.categories.map((cat) => {
                         const catCollapsed = collapsedCategories.has(cat.id);
+                        const catColour = cat.photographyType?.hexColour ?? sectionColour;
 
                         return (
                           <>
-                            {/* Category row — inherits section colour at reduced opacity */}
+                            {/* Category row */}
                             <tr key={`cat-${cat.id}`}>
                               <td
                                 colSpan={2 + days.length}
                                 className="px-4 py-1.5 cursor-pointer select-none"
-                                style={{ backgroundColor: sectionColour, filter: 'brightness(1.15)' }}
+                                style={{ backgroundColor: catColour, filter: cat.photographyTypeId ? undefined : 'brightness(1.15)' }}
                                 onClick={() => toggleCategoryCollapse(cat.id)}
                               >
                                 <div className="flex items-center gap-2">
@@ -479,7 +480,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
 
                             {!catCollapsed && cat.locations.map((loc) => {
                               const locCollapsed = collapsedLocations.has(loc.id);
-                              const tickColour = loc.photographyType?.hexColour ?? sectionColour;
+                              const tickColour = catColour;
                               return (
                                 <>
                                   {/* Location row */}
@@ -489,9 +490,9 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                         <button onClick={() => toggleLocationCollapse(loc.id)} className="text-gray-500 hover:text-gray-700">
                                           {locCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                         </button>
-                                        <Pin className="w-3 h-3" style={{ color: tickColour }} />
+                                        <Pin className="w-3 h-3 text-gray-400" />
                                         <span className="font-semibold text-sm text-gray-800">{loc.name}</span>
-                                        <LocationActions loc={loc} cat={cat} projectId={projectId} types={types} />
+                                        <LocationActions loc={loc} cat={cat} projectId={projectId} />
                                       </div>
                                     </td>
                                     <td className="sticky left-[280px] z-10 bg-[#F0F0F0] border-b border-gray-200" />
@@ -602,10 +603,24 @@ function SectionActions({ section, projectId, types }: { section: ShotSection; p
   );
 }
 
-function CategoryActions({ cat, section: _section, projectId, types: _types }: { cat: ShotCategory; section: ShotSection; projectId: string; types: PhotographyType[] }) {
+function CategoryActions({ cat, section: _section, projectId, types }: { cat: ShotCategory; section: ShotSection; projectId: string; types: PhotographyType[] }) {
   const queryClient = useQueryClient();
   return (
     <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={cat.photographyTypeId ?? ''}
+        onChange={async (e) => {
+          await projectsApi.updateCategory(projectId, cat.id, { photographyTypeId: e.target.value || null });
+          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+        }}
+        className="text-xs bg-white/10 text-white border border-white/20 rounded px-1 py-0.5 cursor-pointer focus:outline-none"
+        title="Photography type"
+      >
+        <option value="" style={{ backgroundColor: '#1A1A2E' }}>Inherit</option>
+        {types.map((t) => (
+          <option key={t.id} value={t.id} style={{ backgroundColor: t.hexColour }}>{t.name}</option>
+        ))}
+      </select>
       <button
         onClick={async () => {
           const name = prompt('Add location:', '');
@@ -633,24 +648,10 @@ function CategoryActions({ cat, section: _section, projectId, types: _types }: {
   );
 }
 
-function LocationActions({ loc, cat: _cat, projectId, types }: { loc: ShotLocation; cat: ShotCategory; projectId: string; types: PhotographyType[] }) {
+function LocationActions({ loc, cat: _cat, projectId }: { loc: ShotLocation; cat: ShotCategory; projectId: string }) {
   const queryClient = useQueryClient();
   return (
     <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
-      <select
-        value={loc.photographyTypeId ?? ''}
-        onChange={async (e) => {
-          await projectsApi.updateLocation(projectId, loc.id, { photographyTypeId: e.target.value || null });
-          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
-        }}
-        className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-600 cursor-pointer focus:outline-none"
-        title="Photography type override"
-      >
-        <option value="">Inherit</option>
-        {types.map((t) => (
-          <option key={t.id} value={t.id}>{t.name}</option>
-        ))}
-      </select>
       <button
         onClick={async () => {
           if (!confirm(`Delete location "${loc.name}"?`)) return;

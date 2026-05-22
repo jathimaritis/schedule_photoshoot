@@ -59,10 +59,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       categories: {
         orderBy: { sortOrder: 'asc' },
         include: {
+          photographyType: true,
           locations: {
             orderBy: { sortOrder: 'asc' },
             include: {
-              photographyType: true,
               shots: {
                 orderBy: { sortOrder: 'asc' },
                 include: { dayAssignments: { include: { shootingDay: true } } },
