@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import prisma from './utils/prisma';
 
 import authRouter from './routes/auth';
 import orgRouter from './routes/org';
@@ -61,8 +62,18 @@ if (process.env.NODE_ENV === 'production') {
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);
-});
+async function start() {
+  // Apply any schema additions that the migration system may not have applied.
+  // Using IF NOT EXISTS makes this safe to run on every startup.
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "ShootingDay" ADD COLUMN IF NOT EXISTS "headerColour" TEXT`
+  ).catch((e) => console.warn('Schema check warning:', e.message));
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);
+  });
+}
+
+start();
 
 export default app;

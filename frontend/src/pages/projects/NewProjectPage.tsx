@@ -47,8 +47,9 @@ export default function NewProjectPage() {
       await Promise.all(
         types.map((t, i) => projectsApi.createType(project.id, { ...t, sortOrder: i }))
       );
-      if (days.length > 0) {
-        await projectsApi.bulkCreateDays(project.id, days.map((d, i) => ({
+      const validDays = days.filter((d) => d.calendarDate);
+      if (validDays.length > 0) {
+        await projectsApi.bulkCreateDays(project.id, validDays.map((d, i) => ({
           dayNumber: i + 1,
           calendarDate: new Date(d.calendarDate).toISOString(),
           label: d.label || undefined,
@@ -149,8 +150,11 @@ export default function NewProjectPage() {
         {step === 3 && (
           <div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Add your shooting days. {startDate && endDate && (
-                <button onClick={generateDaysFromDates} className="text-[#1A1A2E] hover:underline font-medium">Auto-generate from dates</button>
+              Add your shooting days.{' '}
+              {startDate && endDate ? (
+                <button onClick={generateDaysFromDates} className="text-[#1A1A2E] hover:underline font-medium">Auto-generate from project dates</button>
+              ) : (
+                <span className="text-amber-600 text-xs">(Set start &amp; end dates in Step 1 to auto-generate)</span>
               )}
             </p>
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
