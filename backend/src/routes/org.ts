@@ -12,7 +12,7 @@ const updateOrgSchema = z.object({
   name: z.string().min(1).optional(),
   agencyName: z.string().optional(),
   footerText: z.string().optional(),
-  logoUrl: z.string().url().optional().nullable(),
+  logoUrl: z.string().optional().nullable(),
   defaultCrewFields: z.array(z.object({ label: z.string(), value: z.string().optional() })).optional(),
   defaultClientFields: z.array(z.object({ label: z.string(), value: z.string().optional() })).optional(),
   defaultLogisticsFields: z.array(z.object({ label: z.string(), value: z.string().optional() })).optional(),

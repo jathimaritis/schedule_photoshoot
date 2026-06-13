@@ -54,10 +54,16 @@ async function getFullProject(projectId: string, organisationId: string): Promis
 
   if (!project) return null;
 
+  const org = await prisma.organisation.findUnique({
+    where: { id: organisationId },
+    select: { logoUrl: true },
+  });
+
   return {
     ...project,
     totalShots: project._count.shots,
     sections: project.shotSections,
+    logoUrl: org?.logoUrl ?? null,
   } as unknown as ScheduleProject;
 }
 

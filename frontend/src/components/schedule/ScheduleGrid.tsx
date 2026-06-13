@@ -100,6 +100,7 @@ function SortableShot({
   sectionColour,
   onToggle,
   onUpdate,
+  onDelete,
   isEven,
 }: {
   shot: Shot;
@@ -108,13 +109,14 @@ function SortableShot({
   sectionColour: string;
   onToggle: (shotId: string, day: ShootingDay, assignmentId?: string) => void;
   onUpdate: (shotId: string, data: Partial<Shot>) => Promise<void>;
+  onDelete: (shotId: string) => Promise<void>;
   isEven: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: shot.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   return (
-    <tr ref={setNodeRef} style={style} className={clsx('hover:bg-blue-50/30 transition-colors', isEven ? 'bg-white' : 'bg-gray-50/50')}>
+    <tr ref={setNodeRef} style={style} className={clsx('group hover:bg-blue-50/30 transition-colors', isEven ? 'bg-white' : 'bg-gray-50/50')}>
       <td className="px-2 py-1 border-b border-gray-100 sticky left-0 z-10" style={{ backgroundColor: 'inherit', minWidth: 280, maxWidth: 340 }}>
         <div className="flex items-center gap-1.5">
           <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 p-0.5">
@@ -125,6 +127,13 @@ function SortableShot({
             onSave={(v) => onUpdate(shot.id, { description: v })}
             className="flex-1 min-w-0"
           />
+          <button
+            onClick={() => onDelete(shot.id)}
+            className="flex-shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+            title="Delete shot"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
         </div>
       </td>
       <td className="px-2 py-1 border-b border-gray-100 sticky left-[280px] z-10 bg-inherit" style={{ minWidth: 90 }}>
@@ -227,6 +236,16 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
       setSaveStatus('error');
+    }
+  };
+
+  const deleteShot = async (shotId: string) => {
+    if (!confirm('Delete this shot?')) return;
+    try {
+      await projectsApi.deleteShot(projectId, shotId);
+      queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+    } catch {
+      toast.error('Failed to delete shot');
     }
   };
 
@@ -515,6 +534,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                             toggleAssignment.mutate({ shotId, day, assignmentId })
                                           }
                                           onUpdate={updateShot}
+                                          onDelete={deleteShot}
                                           isEven={si % 2 === 0}
                                         />
                                       ))}

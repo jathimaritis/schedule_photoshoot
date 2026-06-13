@@ -75,6 +75,23 @@ async function addSummarySheet(wb: ExcelJS.Workbook, project: ScheduleProject) {
     return row;
   };
 
+  // Logo (if provided)
+  if (project.logoUrl) {
+    try {
+      const dataUrlMatch = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+      if (dataUrlMatch) {
+        const ext = dataUrlMatch[1] === 'webp' ? 'png' : dataUrlMatch[1] as 'png' | 'jpeg' | 'gif';
+        const base64 = dataUrlMatch[2];
+        const imageId = wb.addImage({ base64, extension: ext });
+        ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 120, height: 50 } });
+        ws.addRow([]);
+        ws.addRow([]);
+      }
+    } catch {
+      // skip logo if embedding fails
+    }
+  }
+
   // Title
   const titleRow = ws.addRow([`${project.name} — PHOTOSHOOT SCHEDULE`]);
   ws.mergeCells(`A${titleRow.number}:D${titleRow.number}`);
@@ -315,6 +332,21 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     return row;
   };
 
+  // Logo (top-right corner of call sheet)
+  if (project.logoUrl) {
+    try {
+      const dataUrlMatch = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+      if (dataUrlMatch) {
+        const ext = dataUrlMatch[1] === 'webp' ? 'png' : dataUrlMatch[1] as 'png' | 'jpeg' | 'gif';
+        const base64 = dataUrlMatch[2];
+        const imageId = wb.addImage({ base64, extension: ext });
+        ws.addImage(imageId, { tl: { col: 3, row: 0 }, ext: { width: 100, height: 40 } });
+      }
+    } catch {
+      // skip logo if embedding fails
+    }
+  }
+
   // Row 1: Title
   const r1 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, null, null, null]);
   ws.mergeCells(`A1:D1`);
@@ -505,6 +537,7 @@ export interface ScheduleProject {
   endDate?: string | Date | null;
   agencyName?: string | null;
   footerText?: string | null;
+  logoUrl?: string | null;
   totalShots?: number;
   photographyTypes: Array<{ id: string; name: string; hexColour: string }>;
   shootingDays: ShootingDayData[];
