@@ -75,6 +75,7 @@ export interface ShootingDay {
   dayNumber: number;
   calendarDate: string;
   label?: string | null;
+  headerColour?: string | null;
   projectId: string;
   photographyTypeId?: string | null;
   photographyType?: PhotographyType | null;

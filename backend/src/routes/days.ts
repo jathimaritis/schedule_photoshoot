@@ -11,6 +11,7 @@ const daySchema = z.object({
   dayNumber: z.number().int().min(1),
   calendarDate: z.string().datetime(),
   label: z.string().optional().nullable(),
+  headerColour: z.string().optional().nullable(),
   photographyTypeId: z.string().optional().nullable(),
 });
 

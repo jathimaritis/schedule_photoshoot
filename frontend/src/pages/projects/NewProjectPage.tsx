@@ -35,7 +35,7 @@ export default function NewProjectPage() {
   const [types, setTypes] = useState(DEFAULT_TYPES);
 
   // Step 3: Shooting days
-  const [days, setDays] = useState<Array<{ calendarDate: string; label: string }>>([]);
+  const [days, setDays] = useState<Array<{ calendarDate: string; label: string; headerColour: string }>>([]);
 
   const createProject = useMutation({
     mutationFn: async () => {
@@ -52,6 +52,7 @@ export default function NewProjectPage() {
           dayNumber: i + 1,
           calendarDate: new Date(d.calendarDate).toISOString(),
           label: d.label || undefined,
+          headerColour: d.headerColour || undefined,
         })));
       }
       return project;
@@ -71,7 +72,7 @@ export default function NewProjectPage() {
     const newDays = [];
     let current = start;
     while (current <= end) {
-      newDays.push({ calendarDate: format(current, 'yyyy-MM-dd'), label: '' });
+      newDays.push({ calendarDate: format(current, 'yyyy-MM-dd'), label: '', headerColour: '' });
       current = addDays(current, 1);
     }
     setDays(newDays);
@@ -163,10 +164,17 @@ export default function NewProjectPage() {
                     className="text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
                   />
                   <input
-                    placeholder="Label (optional)"
+                    placeholder="Title (optional)"
                     value={d.label}
                     onChange={(e) => setDays((ds) => ds.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                     className="flex-1 text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
+                  />
+                  <input
+                    type="color"
+                    value={d.headerColour || '#2A3A5C'}
+                    onChange={(e) => setDays((ds) => ds.map((x, j) => j === i ? { ...x, headerColour: e.target.value } : x))}
+                    title="Header colour (optional)"
+                    className="w-8 h-8 rounded cursor-pointer border border-gray-300 flex-shrink-0"
                   />
                   <button onClick={() => setDays((ds) => ds.filter((_, j) => j !== i))} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -175,7 +183,7 @@ export default function NewProjectPage() {
               ))}
             </div>
             <button
-              onClick={() => setDays((d) => [...d, { calendarDate: '', label: '', typeIdx: null }])}
+              onClick={() => setDays((d) => [...d, { calendarDate: '', label: '', headerColour: '' }])}
               className="mt-3 flex items-center gap-2 text-sm text-[#1A1A2E] hover:underline"
             >
               <Plus className="w-4 h-4" /> Add day

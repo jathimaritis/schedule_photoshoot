@@ -134,6 +134,13 @@ function SortableShot({
           className="text-xs text-gray-500"
         />
       </td>
+      <td className="px-2 py-1 border-b border-gray-100 bg-inherit" style={{ minWidth: 150 }}>
+        <InlineEdit
+          value={shot.notes ?? ''}
+          onSave={(v) => onUpdate(shot.id, { notes: v })}
+          className="text-xs text-gray-500"
+        />
+      </td>
       {days.map((day) => (
         <TickCell
           key={day.id}
@@ -156,7 +163,6 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
   const [search, setSearch] = useState('');
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
-  const [newSectionTypeId, setNewSectionTypeId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: sections = [], isLoading } = useQuery({
@@ -224,6 +230,19 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
     }
   };
 
+  const updateLocation = async (locId: string, name: string) => {
+    if (!name.trim()) return;
+    setSaveStatus('saving');
+    try {
+      await projectsApi.updateLocation(projectId, locId, { name: name.trim() });
+      queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch {
+      setSaveStatus('error');
+    }
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -263,11 +282,9 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
     await projectsApi.createSection(projectId, {
       name: newSectionName.trim(),
       sortOrder: sections.length,
-      photographyTypeId: newSectionTypeId || null,
     });
     queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
     setNewSectionName('');
-    setNewSectionTypeId('');
     setAddSectionOpen(false);
   };
 
@@ -347,33 +364,6 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
             onKeyDown={(e) => { if (e.key === 'Enter') addSection(); }}
             autoFocus
           />
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Photography type</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setNewSectionTypeId('')}
-                className={clsx(
-                  'px-3 py-1.5 rounded-full text-sm border-2 transition-colors',
-                  !newSectionTypeId ? 'border-gray-800 bg-gray-100 font-medium' : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
-                )}
-              >
-                None
-              </button>
-              {types.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setNewSectionTypeId(t.id)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-full text-sm text-white border-2 transition-opacity',
-                    newSectionTypeId === t.id ? 'border-white shadow-md opacity-100' : 'border-transparent opacity-70 hover:opacity-90'
-                  )}
-                  style={{ backgroundColor: t.hexColour }}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setAddSectionOpen(false)}>Cancel</Button>
             <Button onClick={addSection} disabled={!newSectionName.trim()}>Add Section</Button>
@@ -384,32 +374,40 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
       {/* Grid */}
       <div className="flex-1 overflow-auto scrollbar-thin">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <table className="border-collapse" style={{ minWidth: 370 + days.length * 44 }}>
+          <table className="border-collapse" style={{ minWidth: 520 + days.length * 44 }}>
             <colgroup>
               <col style={{ minWidth: 280, width: 280 }} />
               <col style={{ minWidth: 90, width: 90 }} />
+              <col style={{ minWidth: 150, width: 150 }} />
               {days.map((d) => <col key={d.id} style={{ minWidth: 44, width: 44 }} />)}
             </colgroup>
 
             {/* Header */}
             <thead className="sticky top-0 z-20">
-              <tr style={{ height: 48 }}>
-                <th className="bg-[#2A3A5C] text-white text-xs font-bold text-left px-3 border-r border-white/20 sticky left-0 z-30">
+              <tr>
+                <th className="bg-[#2A3A5C] text-white text-xs font-bold text-left px-3 border-r border-white/20 sticky left-0 z-30 py-2">
                   SHOT / LOCATION
                 </th>
-                <th className="bg-[#2A3A5C] text-white text-xs font-bold px-2 sticky left-[280px] z-30 border-r border-white/20">
+                <th className="bg-[#2A3A5C] text-white text-xs font-bold px-2 sticky left-[280px] z-30 border-r border-white/20 py-2">
                   TIMING
+                </th>
+                <th className="bg-[#2A3A5C] text-white text-xs font-bold px-2 border-r border-white/20 py-2">
+                  NOTES
                 </th>
                 {days.map((d) => (
                   <th
                     key={d.id}
-                    className="bg-[#2A3A5C] text-white text-xs font-bold text-center px-1 border-r border-white/10"
+                    className="text-white text-xs font-bold text-center px-1 border-r border-white/10 py-2"
+                    style={{ backgroundColor: d.headerColour ?? '#2A3A5C' }}
                   >
                     <div className="leading-tight">
                       <div>Day {d.dayNumber}</div>
                       <div className="font-normal opacity-80 text-[10px]">
                         {new Date(d.calendarDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
                       </div>
+                      {d.label && (
+                        <div className="font-semibold text-[11px] mt-0.5 whitespace-normal">{d.label}</div>
+                      )}
                     </div>
                   </th>
                 ))}
@@ -419,7 +417,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
             <tbody>
               {filteredSections.length === 0 ? (
                 <tr>
-                  <td colSpan={2 + days.length} className="py-16 text-center text-gray-400 text-sm">
+                  <td colSpan={3 + days.length} className="py-16 text-center text-gray-400 text-sm">
                     No shots yet. Add a section to get started.
                   </td>
                 </tr>
@@ -433,7 +431,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                       {/* Section row */}
                       <tr key={`sec-${section.id}`}>
                         <td
-                          colSpan={2 + days.length}
+                          colSpan={3 + days.length}
                           className="px-3 py-2 cursor-pointer select-none"
                           style={{ backgroundColor: sectionColour }}
                           onClick={() => toggleSectionCollapse(section.id)}
@@ -447,7 +445,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                             <span className="text-white font-bold text-sm uppercase tracking-wide">
                               {section.name}
                             </span>
-                            <SectionActions section={section} projectId={projectId} types={types} />
+                            <SectionActions section={section} projectId={projectId} />
                           </div>
                         </td>
                       </tr>
@@ -461,7 +459,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                             {/* Category row */}
                             <tr key={`cat-${cat.id}`}>
                               <td
-                                colSpan={2 + days.length}
+                                colSpan={3 + days.length}
                                 className="px-4 py-1.5 cursor-pointer select-none"
                                 style={{ backgroundColor: catColour, filter: cat.photographyTypeId ? undefined : 'brightness(1.15)' }}
                                 onClick={() => toggleCategoryCollapse(cat.id)}
@@ -491,11 +489,16 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                           {locCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                         </button>
                                         <Pin className="w-3 h-3 text-gray-400" />
-                                        <span className="font-semibold text-sm text-gray-800">{loc.name}</span>
+                                        <InlineEdit
+                                          value={loc.name}
+                                          onSave={(v) => updateLocation(loc.id, v)}
+                                          className="font-semibold text-gray-800"
+                                        />
                                         <LocationActions loc={loc} cat={cat} projectId={projectId} />
                                       </div>
                                     </td>
                                     <td className="sticky left-[280px] z-10 bg-[#F0F0F0] border-b border-gray-200" />
+                                    <td className="bg-[#F0F0F0] border-b border-gray-200" style={{ minWidth: 150, height: 32 }} />
                                     {days.map((d) => <td key={d.id} className="bg-[#F0F0F0] border-b border-gray-200 border-l border-gray-200" style={{ minWidth: 44, height: 32 }} />)}
                                   </tr>
 
@@ -521,7 +524,7 @@ export default function ScheduleGrid({ projectId, days, types }: ScheduleGridPro
                                   {/* Add shot button */}
                                   {!locCollapsed && (
                                     <tr>
-                                      <td colSpan={2 + days.length} className="px-8 py-1 border-b border-gray-100">
+                                      <td colSpan={3 + days.length} className="px-8 py-1 border-b border-gray-100">
                                         <AddShotButton locationId={loc.id} projectId={projectId} sortOrder={loc.shots.length} />
                                       </td>
                                     </tr>
@@ -558,24 +561,10 @@ function AddShotButton({ locationId, projectId, sortOrder }: { locationId: strin
   );
 }
 
-function SectionActions({ section, projectId, types }: { section: ShotSection; projectId: string; types: PhotographyType[] }) {
+function SectionActions({ section, projectId }: { section: ShotSection; projectId: string }) {
   const queryClient = useQueryClient();
   return (
     <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
-      <select
-        value={section.photographyTypeId ?? ''}
-        onChange={async (e) => {
-          await projectsApi.updateSection(projectId, section.id, { photographyTypeId: e.target.value || null });
-          queryClient.invalidateQueries({ queryKey: ['shots', projectId] });
-        }}
-        className="text-xs bg-white/10 text-white border border-white/20 rounded px-1 py-0.5 cursor-pointer focus:outline-none"
-        title="Photography type"
-      >
-        <option value="" style={{ backgroundColor: '#1A1A2E' }}>No type</option>
-        {types.map((t) => (
-          <option key={t.id} value={t.id} style={{ backgroundColor: t.hexColour }}>{t.name}</option>
-        ))}
-      </select>
       <button
         onClick={async () => {
           const name = prompt('Add category:', '');
