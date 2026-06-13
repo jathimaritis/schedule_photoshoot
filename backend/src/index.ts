@@ -69,6 +69,10 @@ async function start() {
     `ALTER TABLE "ShootingDay" ADD COLUMN IF NOT EXISTS "headerColour" TEXT`
   ).catch((e) => console.warn('Schema check warning:', e.message));
 
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "Shot" ADD COLUMN IF NOT EXISTS "notes" TEXT`
+  ).catch((e) => console.warn('Schema check warning:', e.message));
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);
   });
