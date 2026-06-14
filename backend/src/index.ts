@@ -17,6 +17,7 @@ import callSheetsRouter from './routes/callsheets';
 import exportRouter from './routes/export';
 import profileRouter from './routes/profile';
 import productionCallSheetsRouter from './routes/production-callsheets';
+import adminRouter from './routes/admin';
 import { errorHandler, notFound } from './middleware/error';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/projects/:id/callsheets', callSheetsRouter);
 app.use('/api/projects/:id/export', exportRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/production-callsheets', productionCallSheetsRouter);
+app.use('/api/admin', adminRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
