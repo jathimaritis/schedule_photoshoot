@@ -86,23 +86,40 @@ function shiftTime(t: string, mins: number): string {
   return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
 }
 
-// Sun times + weather proxy (avoids CORS issues on some clients)
-// Must come BEFORE /:id route
+// Sun times + weather — geocodes server-side then fetches forecast.
+// Accepts ?location=<string>&date=<yyyy-MM-dd> so the browser makes zero external calls.
+// Must come BEFORE /:id route.
 router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
-  const { lat, lng, date } = req.query as Record<string, string>;
-  if (!lat || !lng || !date) {
-    res.status(400).json({ error: 'lat, lng, and date are required' });
+  console.log('[sun-times] handler reached, query:', req.query);
+  const { location, date } = req.query as Record<string, string>;
+  if (!location || !date) {
+    res.status(400).json({ error: 'location and date are required' });
     return;
   }
   try {
-    const url = [
+    // Step 1: Geocode location via Open-Meteo (done server-side to avoid any browser CORS issues)
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
+    console.log('[sun-times] geocoding:', geoUrl);
+    const geoResp = await fetch(geoUrl);
+    if (!geoResp.ok) throw new Error(`Geocoding failed: HTTP ${geoResp.status}`);
+    const geoData = await geoResp.json() as { results?: { latitude: number; longitude: number; name: string; country?: string }[] };
+    const place = geoData.results?.[0];
+    if (!place) throw new Error(`Location not found: "${location}"`);
+    console.log('[sun-times] geocoded to:', place.latitude, place.longitude, place.name, place.country ?? '');
+
+    // Step 2: Fetch forecast from Open-Meteo
+    const forecastUrl = [
       'https://api.open-meteo.com/v1/forecast',
-      `?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`,
+      `?latitude=${place.latitude}&longitude=${place.longitude}`,
       `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
-      `&timezone=auto&start_date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(date)}`,
+      `&timezone=auto&start_date=${date}&end_date=${date}`,
     ].join('');
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Open-Meteo ${resp.status}`);
+    console.log('[sun-times] fetching forecast:', forecastUrl);
+    const resp = await fetch(forecastUrl);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`Open-Meteo forecast failed: HTTP ${resp.status} — ${body.slice(0, 200)}`);
+    }
     const data = await resp.json() as {
       daily?: {
         sunrise?: string[]; sunset?: string[];
@@ -113,6 +130,7 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
         temperature_2m_min?: number[];
       }
     };
+    console.log('[sun-times] forecast daily keys:', data.daily ? Object.keys(data.daily) : 'none');
 
     const sunriseIso = data.daily?.sunrise?.[0];
     const sunsetIso  = data.daily?.sunset?.[0];
@@ -120,9 +138,9 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
     const sunsetTime  = sunsetIso  ? parseIsoTime(sunsetIso)  : null;
     const wCode = data.daily?.weathercode?.[0];
 
-    res.json({
-      sunrise:     sunriseTime,
-      sunset:      sunsetTime,
+    const result = {
+      sunrise:      sunriseTime,
+      sunset:       sunsetTime,
       goldenHourAm: sunriseTime,
       goldenHourPm: sunsetTime ? shiftTime(sunsetTime, -60) : null,
       blueHourAm:   sunriseTime ? shiftTime(sunriseTime, -40) : null,
@@ -134,10 +152,12 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
         precipitation: data.daily?.precipitation_sum?.[0] ?? null,
         windSpeed:     data.daily?.windspeed_10m_max?.[0] != null ? Math.round(data.daily.windspeed_10m_max[0]!) : null,
       },
-    });
+    };
+    console.log('[sun-times] returning:', JSON.stringify(result).slice(0, 300));
+    res.json(result);
   } catch (err) {
-    console.error('Sun-times proxy error:', err);
-    res.status(502).json({ error: 'Could not fetch sun/weather data' });
+    console.error('[sun-times] error:', err);
+    res.status(502).json({ error: (err as Error).message ?? 'Could not fetch sun/weather data' });
   }
 });
 

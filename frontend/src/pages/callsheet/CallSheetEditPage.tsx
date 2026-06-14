@@ -153,17 +153,10 @@ export default function CallSheetEditPage() {
     setFetchingLight(true);
     setLightWarning(null);
     try {
-      // Step 1: Geocode location (Open-Meteo geocoding — lightweight, public, no CORS issue)
-      const geoRes = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(loc)}&count=1&language=en&format=json`
-      );
-      if (!geoRes.ok) throw new Error('Geocoding request failed');
-      const geoData = await geoRes.json() as { results?: { latitude: number; longitude: number; name: string }[] };
-      const place = geoData.results?.[0];
-      if (!place) throw new Error(`Location not found: ${loc}`);
-
-      // Step 2: Fetch sun times + weather via backend proxy (avoids CORS issues with some API calls)
-      const result = await productionCsApi.fetchSunTimes(place.latitude, place.longitude, date);
+      // All geocoding + sun/weather data fetched via the backend to avoid any CORS or browser network issues
+      console.log('[fetchLight] calling backend sun-times with location:', loc, 'date:', date);
+      const result = await productionCsApi.fetchSunTimes(loc, date);
+      console.log('[fetchLight] backend result:', result);
 
       setForm((f) => ({
         ...f,
@@ -177,7 +170,10 @@ export default function CallSheetEditPage() {
       setWeather(result.weather);
       toast.success('Light times and weather populated');
     } catch (e: unknown) {
-      const msg = (e as Error).message || 'Could not fetch light times';
+      console.error('[fetchLight] error:', e);
+      // Extract the most useful error message from Axios error or generic Error
+      const axiosMsg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      const msg = axiosMsg || (e as Error).message || 'Could not fetch light times';
       setLightWarning(msg);
       toast.error(msg + ' — enter manually');
     } finally {
