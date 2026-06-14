@@ -102,7 +102,7 @@ export const projectsApi = {
 };
 
 export const exportApi = {
-  scheduleUrl: (id: string) => `/api/projects/${id}/export/schedule.xlsx`,
-  callSheetsUrl: (id: string) => `/api/projects/${id}/export/callsheets.xlsx`,
-  callSheetUrl: (id: string, dayId: string) => `/api/projects/${id}/export/callsheet/${dayId}.xlsx`,
+  scheduleUrl: (id: string) => `/projects/${id}/export/schedule.xlsx`,
+  callSheetsUrl: (id: string) => `/projects/${id}/export/callsheets.xlsx`,
+  callSheetUrl: (id: string, dayId: string) => `/projects/${id}/export/callsheet/${dayId}.xlsx`,
 };

@@ -45,9 +45,14 @@ export async function buildScheduleWorkbook(project: ScheduleProject): Promise<B
 export async function buildAllCallSheetsWorkbook(project: ScheduleProject): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Photoshoot Scheduler';
+  let added = false;
   for (const day of project.shootingDays) {
     const cs = project.callSheets.find((c) => c.shootingDayId === day.id);
-    if (cs) addCallSheetSheet(wb, project, day, cs);
+    if (cs) { addCallSheetSheet(wb, project, day, cs); added = true; }
+  }
+  if (!added) {
+    const ws = wb.addWorksheet('Call Sheets');
+    ws.addRow(['No call sheets have been created yet.']);
   }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
@@ -58,7 +63,12 @@ export async function buildSingleCallSheetWorkbook(project: ScheduleProject, day
   wb.creator = 'Photoshoot Scheduler';
   const day = project.shootingDays.find((d) => d.id === dayId);
   const cs = project.callSheets.find((c) => c.shootingDayId === dayId);
-  if (day && cs) addCallSheetSheet(wb, project, day, cs);
+  if (day && cs) {
+    addCallSheetSheet(wb, project, day, cs);
+  } else {
+    const ws = wb.addWorksheet('Call Sheet');
+    ws.addRow(['Call sheet not found.']);
+  }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
