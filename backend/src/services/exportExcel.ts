@@ -331,14 +331,16 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   const wsName = `Day ${day.dayNumber}`;
   const ws = wb.addWorksheet(wsName);
 
-  // 6 columns: #  | Shot/Description | Location | Timing | Notes | Status
+  // Column layout serves both field blocks and the shot list.
+  // A: label / shot#   B: value / description   C: spacer / location
+  // D: label / timing  E: value / notes         F: spacer / status
   ws.columns = [
-    { width: 5 },   // #
-    { width: 34 },  // Shot / Description
-    { width: 20 },  // Location
-    { width: 12 },  // Timing
-    { width: 28 },  // Notes
-    { width: 9 },   // Status
+    { width: 20 },  // A: label / #
+    { width: 22 },  // B: value / description
+    { width: 14 },  // C: spacer / location
+    { width: 18 },  // D: label / timing
+    { width: 20 },  // E: value / notes
+    { width: 9 },   // F: spacer / status
   ];
 
   ws.pageSetup = {
@@ -392,8 +394,11 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
 
   // ── Header block ──────────────────────────────────────────────────────────
 
+  // Merged header rows — these are pure title/decoration with no data values in B-F,
+  // so A:F merging is safe here.
+
   // Row 1: Project name
-  const r1 = ws.addRow([project.name.toUpperCase(), null, null, null, null, null]);
+  const r1 = ws.addRow([project.name.toUpperCase(), '', '', '', '', '']);
   mergeRow(rowIdx);
   r1.height = 28;
   r1.getCell(1).fill = fill(BRAND_CREAM);
@@ -402,7 +407,7 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   rowIdx++;
 
   // Row 2: Title bar
-  const r2 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, null, null, null, null, null]);
+  const r2 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, '', '', '', '', '']);
   mergeRow(rowIdx);
   r2.height = 26;
   r2.getCell(1).fill = fill(BRAND_DARK);
@@ -412,7 +417,7 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
 
   // Row 3: Date + type colour bar
   const dateLabel = `${dateStr}${type ? `  |  ${type.name}` : ''}`;
-  const r3 = ws.addRow([dateLabel, null, null, null, null, null]);
+  const r3 = ws.addRow([dateLabel, '', '', '', '', '']);
   mergeRow(rowIdx);
   r3.height = 22;
   r3.getCell(1).fill = fill(typeColour);
@@ -420,9 +425,9 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   r3.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
   rowIdx++;
 
-  // Row 4: Location + date info
+  // Row 4: Location
   const locationText = cs.location ? `📍 ${cs.location}` : '';
-  const r4 = ws.addRow([locationText, null, null, null, null, null]);
+  const r4 = ws.addRow([locationText, '', '', '', '', '']);
   mergeRow(rowIdx);
   r4.height = 20;
   r4.getCell(1).fill = fill(BRAND_CREAM);
@@ -430,9 +435,9 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   r4.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
   rowIdx++;
 
-  // Row 5: Notes
+  // Row 5: Notes (conditional)
   if (cs.notes) {
-    const r5 = ws.addRow([cs.notes, null, null, null, null, null]);
+    const r5 = ws.addRow([cs.notes, '', '', '', '', '']);
     mergeRow(rowIdx);
     r5.height = 30;
     r5.getCell(1).fill = fill(BRAND_CREAM);
@@ -448,9 +453,29 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     fieldsByGroup[f.fieldGroup as 'CREW' | 'CLIENT' | 'LOGISTICS'].push(f);
   }
 
+  // Helper: write one field-data row — no merges, every cell written individually.
+  // Layout: A=label  B=value  C=spacer  D=label  E=value  F=spacer
+  const writeFieldRow = (f1Label: string, f1Value: string, f2Label: string, f2Value: string) => {
+    const row = ws.addRow([f1Label, f1Value, '', f2Label, f2Value, '']);
+    row.height = 20;
+    row.getCell(1).fill  = fill(BRAND_CREAM);
+    row.getCell(1).font  = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
+    row.getCell(2).fill  = fill(BRAND_WHITE);
+    row.getCell(2).font  = font();
+    row.getCell(3).fill  = fill(BRAND_CREAM);   // spacer
+    row.getCell(4).fill  = fill(BRAND_CREAM);
+    row.getCell(4).font  = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
+    row.getCell(5).fill  = fill(BRAND_WHITE);
+    row.getCell(5).font  = font();
+    row.getCell(6).fill  = fill(BRAND_CREAM);   // spacer
+    for (let c = 1; c <= 6; c++) row.getCell(c).border = thinBorder(BORDER_GREY);
+    rowIdx++;
+  };
+
   const renderFieldBlock = (label: string, fields: typeof cs.fields, headerBg: string) => {
     if (fields.length === 0) return;
-    const hRow = ws.addRow([label, null, null, null, null, null]);
+    // Section header — merged A:F, pure title row, no data values
+    const hRow = ws.addRow([label, '', '', '', '', '']);
     mergeRow(rowIdx);
     hRow.height = 18;
     hRow.getCell(1).fill = fill(headerBg);
@@ -458,26 +483,11 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     hRow.getCell(1).alignment = { horizontal: 'center' };
     rowIdx++;
 
+    // Data rows — two fields per row, no merges
     for (let i = 0; i < fields.length; i += 2) {
       const f1 = fields[i];
       const f2 = fields[i + 1];
-      // Spread pairs across 3+3 columns: label | value | label | value (merge pairs)
-      const row = ws.addRow([f1.label, f1.value ?? '', null, f2?.label ?? '', f2?.value ?? '', null]);
-      ws.mergeCells(`B${rowIdx}:C${rowIdx}`);
-      ws.mergeCells(`E${rowIdx}:F${rowIdx}`);
-      row.height = 20;
-      row.getCell(1).fill = fill(BRAND_CREAM);
-      row.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
-      row.getCell(2).fill = fill(BRAND_WHITE);
-      row.getCell(2).font = font();
-      row.getCell(4).fill = fill(BRAND_CREAM);
-      row.getCell(4).font = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
-      row.getCell(5).fill = fill(BRAND_WHITE);
-      row.getCell(5).font = font();
-      for (let c = 1; c <= 6; c++) {
-        row.getCell(c).border = thinBorder(BORDER_GREY);
-      }
-      rowIdx++;
+      writeFieldRow(f1.label, f1.value ?? '', f2?.label ?? '', f2?.value ?? '');
     }
   };
 
@@ -506,32 +516,26 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     rowIdx++;
 
     if (hasSunTimes) {
-      const times1 = ws.addRow([
-        'Sunrise', cs.sunrise ?? '—', 'Sunset', cs.sunset ?? '—', 'Golden Hour AM', cs.goldenHourAm ?? '—',
-      ]);
-      times1.height = 20;
-      for (let ci = 0; ci < 3; ci++) {
-        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-        times1.getCell(lc).fill = fill(BRAND_CREAM);
-        times1.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        times1.getCell(vc).fill = fill(BRAND_WHITE);
-        times1.getCell(vc).font = font();
-        times1.getCell(vc).alignment = { horizontal: 'center' };
-      }
+      // All 6 cells written explicitly — no merges on data rows.
+      const styleTimeRow = (row: ExcelJS.Row) => {
+        row.height = 20;
+        for (let ci = 0; ci < 3; ci++) {
+          const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+          row.getCell(lc).value = row.getCell(lc).value; // keep value
+          row.getCell(lc).fill  = fill(BRAND_CREAM);
+          row.getCell(lc).font  = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+          row.getCell(vc).fill  = fill(BRAND_WHITE);
+          row.getCell(vc).font  = font();
+          row.getCell(vc).alignment = { horizontal: 'center' };
+        }
+      };
+
+      const times1 = ws.addRow(['Sunrise', cs.sunrise ?? '—', 'Sunset', cs.sunset ?? '—', 'Golden Hour AM', cs.goldenHourAm ?? '—']);
+      styleTimeRow(times1);
       rowIdx++;
 
-      const times2 = ws.addRow([
-        'Golden Hour PM', cs.goldenHourPm ?? '—', 'Blue Hour AM', cs.blueHourAm ?? '—', 'Blue Hour PM', cs.blueHourPm ?? '—',
-      ]);
-      times2.height = 20;
-      for (let ci = 0; ci < 3; ci++) {
-        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-        times2.getCell(lc).fill = fill(BRAND_CREAM);
-        times2.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        times2.getCell(vc).fill = fill(BRAND_WHITE);
-        times2.getCell(vc).font = font();
-        times2.getCell(vc).alignment = { horizontal: 'center' };
-      }
+      const times2 = ws.addRow(['Golden Hour PM', cs.goldenHourPm ?? '—', 'Blue Hour AM', cs.blueHourAm ?? '—', 'Blue Hour PM', cs.blueHourPm ?? '—']);
+      styleTimeRow(times2);
       rowIdx++;
     }
 
@@ -544,43 +548,37 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
         return s === '' || s === 'null' || s === 'undefined' ? fallback : s;
       };
 
-      const descVal    = safeVal(w!.description ?? w!.conditions);
-      const tempMax    = w!.tempMax    as number | null | undefined;
-      const tempMin    = w!.tempMin    as number | null | undefined;
-      const precip     = w!.precipitation as number | null | undefined;
-      const windSpeed  = w!.windSpeed  as number | null | undefined;
+      const descVal   = safeVal(w!.description ?? w!.conditions);
+      const tempMax   = w!.tempMax    as number | null | undefined;
+      const tempMin   = w!.tempMin    as number | null | undefined;
+      const precip    = w!.precipitation as number | null | undefined;
+      const windSpeed = w!.windSpeed  as number | null | undefined;
 
       const tempStr = [
         tempMin != null ? `${tempMin}°` : null,
         tempMax != null ? `${tempMax}°C` : null,
       ].filter(Boolean).join(' – ') || '—';
 
-      const styleWeatherRow = (row: ExcelJS.Row) => {
-        row.height = 20;
-        for (let ci = 0; ci < 3; ci++) {
-          const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-          row.getCell(lc).fill = fill(BRAND_CREAM);
-          row.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-          row.getCell(vc).fill = fill(BRAND_WHITE);
-          row.getCell(vc).font = font();
-          row.getCell(vc).alignment = { horizontal: 'center' };
-        }
-      };
-
-      // Row 1 of weather: Conditions | val | Temperature | val | Precipitation | val mm
+      // Row 1: Conditions | val | Temperature | val | Precipitation | val
+      // All 6 cells written individually — no merges.
       const wRow1 = ws.addRow([
-        'Conditions',   descVal,
-        'Temperature',  tempStr,
+        'Conditions',    descVal,
+        'Temperature',   tempStr,
         'Precipitation', precip != null ? `${precip} mm` : '—',
       ]);
-      styleWeatherRow(wRow1);
+      wRow1.height = 20;
+      for (let ci = 0; ci < 3; ci++) {
+        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+        wRow1.getCell(lc).fill = fill(BRAND_CREAM);
+        wRow1.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        wRow1.getCell(vc).fill = fill(BRAND_WHITE);
+        wRow1.getCell(vc).font = font();
+        wRow1.getCell(vc).alignment = { horizontal: 'center' };
+      }
       rowIdx++;
 
-      // Row 2 of weather: Wind Speed | val km/h | (blank × 4)
-      const wRow2 = ws.addRow([
-        'Wind Speed', windSpeed != null ? `${windSpeed} km/h` : '—',
-        '', '', '', '',
-      ]);
+      // Row 2: Wind Speed | val | (4 spacer cells) — no merges.
+      const wRow2 = ws.addRow(['Wind Speed', windSpeed != null ? `${windSpeed} km/h` : '—', '', '', '', '']);
       wRow2.height = 20;
       wRow2.getCell(1).fill = fill(BRAND_CREAM);
       wRow2.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
@@ -588,16 +586,17 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
       wRow2.getCell(2).font = font();
       wRow2.getCell(2).alignment = { horizontal: 'center' };
       for (let c = 3; c <= 6; c++) {
-        wRow2.getCell(c).fill = fill(BRAND_CREAM);
-        wRow2.getCell(c).font = font();
+        wRow2.getCell(c).value = '';
+        wRow2.getCell(c).fill  = fill(BRAND_CREAM);
+        wRow2.getCell(c).font  = font();
       }
       rowIdx++;
     }
   }
 
-  // ── Spacer ────────────────────────────────────────────────────────────────
+  // ── Spacer — pure decoration, merged A:F (no data values) ───────────────
 
-  const spacer = ws.addRow([null, null, null, null, null, null]);
+  const spacer = ws.addRow(['', '', '', '', '', '']);
   mergeRow(rowIdx);
   spacer.height = 6;
   spacer.getCell(1).fill = fill(BRAND_TAN);
