@@ -1,4 +1,5 @@
 export type Role = 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER';
+export type UserStatus = 'PENDING' | 'APPROVED' | 'RESTRICTED';
 
 export interface Contact {
   id: string;
@@ -44,6 +45,10 @@ export interface User {
   email: string;
   role: Role;
   moduleAccess: ModuleAccess;
+  status?: UserStatus;
+  accessScheduler?: boolean;
+  accessCallSheet?: boolean;
+  isAdmin?: boolean;
   avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;

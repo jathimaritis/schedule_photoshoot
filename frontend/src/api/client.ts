@@ -26,6 +26,13 @@ let refreshQueue: Array<(token: string) => void> = [];
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // If the server says PENDING or RESTRICTED, update the local user state immediately
+    const code = error.response?.data?.code as string | undefined;
+    if (error.response?.status === 403 && (code === 'PENDING' || code === 'RESTRICTED')) {
+      const { useAuthStore } = await import('../stores/authStore');
+      useAuthStore.getState().updateUser({ status: code as 'PENDING' | 'RESTRICTED' });
+    }
+
     const original = error.config;
     if (error.response?.status === 401 && !original._retry && !original.url?.includes('/auth/')) {
       if (isRefreshing) {

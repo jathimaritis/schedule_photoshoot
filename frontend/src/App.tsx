@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import { useAuthStore } from './stores/authStore';
 import { setAccessToken } from './api/client';
 import { authApi } from './api/auth';
-import { ModuleAccess, Role } from './types';
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage';
@@ -24,24 +23,24 @@ import ExportPage from './pages/projects/ExportPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import UsersPage from './pages/settings/UsersPage';
 import ProfilePage from './pages/ProfilePage';
-import PendingApprovalPage from './pages/PendingApprovalPage';
+import StatusBlockPage from './pages/StatusBlockPage';
 import AdminPage from './pages/admin/AdminPage';
 import CallSheetListPage from './pages/callsheet/CallSheetListPage';
 import CallSheetEditPage from './pages/callsheet/CallSheetEditPage';
+import { User } from './types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function isAdminRole(role: Role) {
-  return role === 'OWNER' || role === 'ADMIN';
+function isAdmin(user: User) {
+  return user.isAdmin === true || user.role === 'OWNER' || user.role === 'ADMIN';
 }
 
-function canAccessScheduler(role: Role, moduleAccess: ModuleAccess | undefined) {
-  // Treat missing access (pre-migration sessions) as BOTH to avoid locking out existing users
-  return isAdminRole(role) || !moduleAccess || moduleAccess === 'SCHEDULER' || moduleAccess === 'BOTH';
+function canAccessScheduler(user: User) {
+  return isAdmin(user) || (user.status === 'APPROVED' && user.accessScheduler === true);
 }
 
-function canAccessCallSheet(role: Role, moduleAccess: ModuleAccess | undefined) {
-  return isAdminRole(role) || !moduleAccess || moduleAccess === 'CALL_SHEET' || moduleAccess === 'BOTH';
+function canAccessCallSheet(user: User) {
+  return isAdmin(user) || (user.status === 'APPROVED' && user.accessCallSheet === true);
 }
 
 // ─── guards ───────────────────────────────────────────────────────────────────
@@ -55,52 +54,58 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RequireScheduler({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!canAccessScheduler(user.role, user.moduleAccess)) return <Navigate to="/" replace />;
+  if (user.status === 'PENDING') return <StatusBlockPage status="PENDING" />;
+  if (user.status === 'RESTRICTED') return <StatusBlockPage status="RESTRICTED" />;
+  if (!canAccessScheduler(user)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 function RequireCallSheet({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!canAccessCallSheet(user.role, user.moduleAccess)) return <Navigate to="/" replace />;
+  if (user.status === 'PENDING') return <StatusBlockPage status="PENDING" />;
+  if (user.status === 'RESTRICTED') return <StatusBlockPage status="RESTRICTED" />;
+  if (!canAccessCallSheet(user)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!isAdminRole(user.role)) return <Navigate to="/" replace />;
+  if (!isAdmin(user)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-/** Smart root redirect: NONE → pending, else → best default module */
+/** Root redirect: check status and access flags */
 function RootRedirect() {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!isAdminRole(user.role) && user.moduleAccess === 'NONE') {
-    return <PendingApprovalPage />;
-  }
-  if (canAccessScheduler(user.role, user.moduleAccess)) {
-    return <Navigate to="/projects" replace />;
-  }
-  if (canAccessCallSheet(user.role, user.moduleAccess)) {
-    return <Navigate to="/call-sheet" replace />;
-  }
-  return <PendingApprovalPage />;
+  if (user.status === 'PENDING') return <StatusBlockPage status="PENDING" />;
+  if (user.status === 'RESTRICTED') return <StatusBlockPage status="RESTRICTED" />;
+  if (canAccessScheduler(user)) return <Navigate to="/projects" replace />;
+  if (canAccessCallSheet(user)) return <Navigate to="/call-sheet" replace />;
+  return <StatusBlockPage status="PENDING" />;
 }
 
 // ─── app ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const user = useAuthStore((s) => s.user);
+  const { user, setAuth, updateUser } = useAuthStore();
 
   useEffect(() => {
     if (user) {
       authApi.refresh()
-        .then((data) => setAccessToken(data.accessToken))
+        .then((data) => {
+          setAccessToken(data.accessToken);
+          if (data.user) updateUser(data.user);
+        })
         .catch(() => useAuthStore.getState().clearAuth());
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Suppress unused warning
+  void setAuth;
 
   return (
     <BrowserRouter>

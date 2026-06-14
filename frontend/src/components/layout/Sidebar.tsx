@@ -22,10 +22,10 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const [schedulerOpen, setSchedulerOpen] = useState(true);
 
-  const isAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
-  const moduleAccess = isAdmin ? 'BOTH' : (user?.moduleAccess ?? 'NONE');
-  const canScheduler = isAdmin || moduleAccess === 'SCHEDULER' || moduleAccess === 'BOTH';
-  const canCallSheet = isAdmin || moduleAccess === 'CALL_SHEET' || moduleAccess === 'BOTH';
+  const isAdmin = user?.isAdmin === true || user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const isApproved = user?.status === 'APPROVED' || isAdmin;
+  const canScheduler = isAdmin || (isApproved && user?.accessScheduler === true);
+  const canCallSheet = isAdmin || (isApproved && user?.accessCallSheet === true);
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],

@@ -10,7 +10,7 @@ export const authApi = {
 
   logout: () => api.post('/auth/logout').then((r) => r.data),
 
-  refresh: () => api.post<{ accessToken: string }>('/auth/refresh').then((r) => r.data),
+  refresh: () => api.post<{ accessToken: string; user?: import('../types').User }>('/auth/refresh').then((r) => r.data),
 
   invite: (data: { email: string; role: string }) =>
     api.post('/auth/invite', data).then((r) => r.data),
