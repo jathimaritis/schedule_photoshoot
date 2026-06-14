@@ -434,26 +434,26 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
     const merge = (r: ExcelJS.Row, from: string, to: string) =>
       ws.mergeCells(`${from}${r.number}:${to}${r.number}`);
 
-    // ── HEADER BLOCK rows 1–5 ─────────────────────────────────────────────
+    // ── HEADER BLOCK rows 1–5 (cream background so dark logo is visible) ──
     const r1 = ws.addRow(['']); merge(r1, 'A', 'F'); r1.height = 8;
-    r1.getCell(1).fill = mkFill(DARK);
+    r1.getCell(1).fill = mkFill(CREAM);
 
     const r2 = ws.addRow(['']); merge(r2, 'A', 'F'); r2.height = 38; // logo row
-    r2.getCell(1).fill = mkFill(DARK);
+    r2.getCell(1).fill = mkFill(CREAM);
 
     const r3 = ws.addRow(['PRODUCTION CALL SHEET']); merge(r3, 'A', 'F'); r3.height = 18;
-    r3.getCell(1).fill = mkFill(DARK);
-    r3.getCell(1).font = wFont(11);
+    r3.getCell(1).fill = mkFill(CREAM);
+    r3.getCell(1).font = bodyFont(DARK, 11);
     r3.getCell(1).alignment = { vertical: 'middle', indent: 1 };
 
     const r4 = ws.addRow([sheet.projectName]); merge(r4, 'A', 'F'); r4.height = 24;
-    r4.getCell(1).fill = mkFill(DARK);
-    r4.getCell(1).font = wFont(14, true);
+    r4.getCell(1).fill = mkFill(CREAM);
+    r4.getCell(1).font = bodyFont(DARK, 14, true);
     r4.getCell(1).alignment = { vertical: 'middle', indent: 1 };
 
     const r5 = ws.addRow([subLine]); merge(r5, 'A', 'F'); r5.height = 18;
-    r5.getCell(1).fill = mkFill(DARK);
-    r5.getCell(1).font = wFont(10);
+    r5.getCell(1).fill = mkFill(CREAM);
+    r5.getCell(1).font = bodyFont(DARK, 10);
     r5.getCell(1).alignment = { vertical: 'middle', indent: 1 };
 
     // ── ACCENT BAR row 6 ──────────────────────────────────────────────────
@@ -672,8 +672,8 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
     res.setHeader('Content-Disposition', `attachment; filename="${sheet.projectName.replace(/[^a-z0-9]/gi, '_')}_callsheet.pdf"`);
     doc.pipe(res);
 
-    // ── HEADER (90 px, full page width) ───────────────────────────────────
-    doc.rect(0, 0, PAGE_W, 90).fill(DARK_BROWN);
+    // ── HEADER (90 px, full page width) — cream bg so dark logo is visible ─
+    doc.rect(0, 0, PAGE_W, 90).fill(CREAM);
 
     // Left: logo or fallback text
     let logoOk = false;
@@ -687,19 +687,19 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
       } catch { /* skip */ }
     }
     if (!logoOk) {
-      doc.fillColor('white').fontSize(14).font('Helvetica-Bold')
+      doc.fillColor(DARK_BROWN).fontSize(14).font('Helvetica-Bold')
         .text('JA PHOTOGRAPHY', M, 30, { width: 200, lineBreak: false });
     }
 
     // Right: project name / client / date + location
     const shootDate = sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '';
     const dateLocStr = [shootDate, sheet.location ?? ''].filter(Boolean).join(' · ');
-    doc.fillColor('white').fontSize(13).font('Helvetica-Bold')
+    doc.fillColor(DARK_BROWN).fontSize(13).font('Helvetica-Bold')
       .text(sheet.projectName, M, 18, { width: CW, align: 'right', lineBreak: false });
-    doc.fillColor('white').fontSize(10).font('Helvetica')
+    doc.fillColor(DARK_BROWN).fontSize(10).font('Helvetica')
       .text(sheet.client ?? '', M, 40, { width: CW, align: 'right', lineBreak: false });
     if (dateLocStr) {
-      doc.fillColor('white').fontSize(10).font('Helvetica')
+      doc.fillColor(DARK_BROWN).fontSize(10).font('Helvetica')
         .text(dateLocStr, M, 57, { width: CW, align: 'right', lineBreak: false });
     }
 
