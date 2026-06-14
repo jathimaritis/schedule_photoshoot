@@ -55,6 +55,7 @@ export interface User {
 export interface InviteToken {
   id: string;
   email: string;
+  token: string;
   moduleAccess: ModuleAccess;
   createdAt: string;
   expiresAt: string;

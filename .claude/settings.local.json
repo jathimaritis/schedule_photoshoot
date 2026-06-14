@@ -26,7 +26,12 @@
       "Bash(node *)",
       "Bash(xargs ls)",
       "Bash(sed -i '' \"s/status: 'PENDING', accessScheduler: false, accessCallSheet: false, isAdmin: false/status: 'PENDING' as UserStatus, accessScheduler: false, accessCallSheet: false, isAdmin: false/g\" /Users/john/schedule_photoshoot/backend/src/routes/auth.ts)",
-      "Bash(sed -i '' \"s/organisationId: invite.organisationId, status: 'PENDING', accessScheduler:/organisationId: invite.organisationId, status: 'PENDING' as UserStatus, accessScheduler:/g\" /Users/john/schedule_photoshoot/backend/src/routes/auth.ts)"
+      "Bash(sed -i '' \"s/organisationId: invite.organisationId, status: 'PENDING', accessScheduler:/organisationId: invite.organisationId, status: 'PENDING' as UserStatus, accessScheduler:/g\" /Users/john/schedule_photoshoot/backend/src/routes/auth.ts)",
+      "Bash(sed -i '' -e 's/import { authenticate, requireMinRole, requireApproved } from/import { authenticate, requireAdmin } from/' -e '/router\\\\.use\\(requireApproved\\)/d' -e 's/requireMinRole\\('\\\\''EDITOR'\\\\''\\),\\\\s*//g' -e 's/requireMinRole\\('\\\\''ADMIN'\\\\''\\)/requireAdmin/g' projects.ts)",
+      "Bash(sed -i '' -e 's/import { authenticate, requireMinRole, requireApproved } from/import { authenticate } from/' -e '/router\\\\.use\\(requireApproved\\)/d' -e 's/requireMinRole\\('\\\\''EDITOR'\\\\''\\),\\\\s*//g' callsheets.ts)",
+      "Bash(sed -i '' -e 's/import { authenticate, requireMinRole, requireApproved } from/import { authenticate } from/' -e '/router\\\\.use\\(requireApproved\\)/d' -e 's/requireMinRole\\('\\\\''EDITOR'\\\\''\\),\\\\s*//g' days.ts)",
+      "Bash(sed -i '' -e 's/import { authenticate, requireMinRole, requireApproved } from/import { authenticate } from/' -e '/router\\\\.use\\(requireApproved\\)/d' -e 's/requireMinRole\\('\\\\''EDITOR'\\\\''\\),\\\\s*//g' types.ts)",
+      "Bash(sed -i '' -e 's/import { authenticate, requireMinRole, requireApproved } from/import { authenticate } from/' -e '/router\\\\.use\\(requireApproved\\)/d' -e 's/requireMinRole\\('\\\\''EDITOR'\\\\''\\),\\\\s*//g' shots.ts)"
     ]
   }
 }

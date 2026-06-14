@@ -55,7 +55,7 @@ router.get('/users', requireAdmin, async (req: Request, res: Response): Promise<
 
   const invites = await prisma.inviteToken.findMany({
     where: { organisationId: req.user!.organisationId },
-    select: { id: true, email: true, moduleAccess: true, createdAt: true, expiresAt: true, usedAt: true },
+    select: { id: true, email: true, token: true, moduleAccess: true, createdAt: true, expiresAt: true, usedAt: true },
     orderBy: { createdAt: 'desc' },
   });
 

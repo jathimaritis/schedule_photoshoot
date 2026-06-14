@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ModuleAccess } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
-import { sendInviteEmail, sendPasswordResetEmail } from '../utils/email';
+import { sendPasswordResetEmail } from '../utils/email';
 import { validate } from '../middleware/validate';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import crypto from 'crypto';
@@ -163,18 +163,9 @@ router.post('/invite', authenticate, requireAdmin, validate(inviteSchema), async
     data: { token, email, moduleAccess, expiresAt, createdById: userId, organisationId },
   });
 
-  const org = await prisma.organisation.findUnique({ where: { id: organisationId } });
   const inviteUrl = `${process.env.CLIENT_URL}/invite/${token}`;
 
-  let emailSent = false;
-  try {
-    await sendInviteEmail(email, inviteUrl, org!.name);
-    emailSent = true;
-  } catch (err) {
-    console.error('[invite] Email failed:', err);
-  }
-
-  res.json({ message: 'Invite created', email, inviteUrl, emailSent });
+  res.json({ message: 'Invite created', email, inviteUrl });
 });
 
 // ─── Look up invite (public) ──────────────────────────────────────────────────

@@ -169,6 +169,27 @@ function UsersTab({ users, isLoading, currentUserId, qc }: {
 
 // ─── Tab 2: Invites ───────────────────────────────────────────────────────────
 
+const APP_URL = window.location.origin;
+
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-1 text-xs text-[#1A1A2E] hover:text-[#2C2C54] font-medium underline underline-offset-2"
+      title={url}
+    >
+      <Link2 className="w-3 h-3" />
+      {copied ? 'Copied!' : 'Copy link'}
+    </button>
+  );
+}
+
 function InvitesTab({ invites, isLoading, qc }: {
   invites: InviteToken[];
   isLoading: boolean;
@@ -176,20 +197,14 @@ function InvitesTab({ invites, isLoading, qc }: {
 }) {
   const [email, setEmail] = useState('');
   const [moduleAccess, setModuleAccess] = useState<ModuleAccess>('SCHEDULER');
-  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [lastInvite, setLastInvite] = useState<{ email: string; url: string } | null>(null);
 
   const inviteMutation = useMutation({
     mutationFn: () => authApi.invite({ email: email.trim(), moduleAccess }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['org-users'] });
+      setLastInvite({ email: data.email, url: data.inviteUrl });
       setEmail('');
-      if (data.emailSent) {
-        toast.success(`Invite sent to ${data.email}`);
-        setLastInviteUrl(null);
-      } else {
-        toast.success('Invite created — email failed, copy the link below');
-        setLastInviteUrl(data.inviteUrl);
-      }
     },
     onError: (e: unknown) => toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed'),
   });
@@ -204,14 +219,14 @@ function InvitesTab({ invites, isLoading, qc }: {
     <div className="space-y-6">
       {/* Send form */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Send an invite</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Create an invite link</h3>
         <div className="flex flex-col sm:flex-row gap-3 items-end">
           <div className="flex-1">
             <Input
               label="Email address"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setLastInvite(null); }}
               placeholder="colleague@example.com"
               required
             />
@@ -234,24 +249,26 @@ function InvitesTab({ invites, isLoading, qc }: {
             disabled={!email.trim()}
             className="shrink-0"
           >
-            <Send className="w-4 h-4" /> Send Invite
+            <Send className="w-4 h-4" /> Generate Invite
           </Button>
         </div>
 
-        {lastInviteUrl && (
-          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-amber-800 mb-1 flex items-center gap-1">
-              <Link2 className="w-3.5 h-3.5" /> Email delivery failed — share this link manually:
+        {lastInvite && (
+          <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+            <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5" />
+              Invite created for {lastInvite.email} — share this link:
             </p>
-            <div className="flex items-center gap-2">
-              <code className="text-xs text-amber-900 break-all flex-1">{lastInviteUrl}</code>
+            <div className="flex items-center gap-3 bg-white border border-green-200 rounded-md px-3 py-2">
+              <code className="text-xs text-gray-700 break-all flex-1">{lastInvite.url}</code>
               <button
-                onClick={() => { navigator.clipboard.writeText(lastInviteUrl); toast.success('Copied!'); }}
-                className="text-xs text-amber-700 hover:text-amber-900 underline shrink-0"
+                onClick={() => { navigator.clipboard.writeText(lastInvite!.url); toast.success('Link copied!'); }}
+                className="shrink-0 text-xs font-medium bg-[#1A1A2E] text-white px-3 py-1.5 rounded hover:bg-[#2C2C54] transition-colors"
               >
                 Copy
               </button>
             </div>
+            <p className="text-xs text-green-600 mt-1.5">This link expires in 7 days.</p>
           </div>
         )}
       </div>
@@ -270,12 +287,13 @@ function InvitesTab({ invites, isLoading, qc }: {
                   <th className="px-4 py-3 text-left hidden sm:table-cell">Sent</th>
                   <th className="px-4 py-3 text-left hidden sm:table-cell">Expires</th>
                   <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3" />
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {invites.map((invite) => {
                   const status = inviteStatus(invite);
+                  const inviteUrl = `${APP_URL}/invite/${invite.token}`;
                   return (
                     <tr key={invite.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{invite.email}</td>
@@ -296,15 +314,18 @@ function InvitesTab({ invites, isLoading, qc }: {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {status === 'pending' && (
-                          <button
-                            onClick={() => cancelMutation.mutate(invite.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                            title="Cancel invite"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {status === 'pending' && <CopyLinkButton url={inviteUrl} />}
+                          {status === 'pending' && (
+                            <button
+                              onClick={() => cancelMutation.mutate(invite.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Cancel invite"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
