@@ -140,7 +140,7 @@ export default function SettingsPage() {
 
       <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
         <strong>Slug:</strong> {org?.slug}<br />
-        Manage team members in the <a href="/settings/users" className="underline font-medium">Team</a> tab.
+        Manage team members in the <a href="/admin" className="underline font-medium">Admin panel</a>.
       </div>
     </div>
   );

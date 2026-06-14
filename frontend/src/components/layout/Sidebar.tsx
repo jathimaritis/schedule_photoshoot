@@ -1,7 +1,7 @@
 import { NavLink, useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Camera, FolderOpen, Settings, Users, Calendar, FileText, Download, LogOut, X, ChevronDown, ClipboardList, Shield } from 'lucide-react';
+import { Camera, FolderOpen, Settings, Calendar, FileText, Download, LogOut, X, ChevronDown, ClipboardList, Shield } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUiStore } from '../../stores/uiStore';
 import { projectsApi } from '../../api/projects';
@@ -175,16 +175,6 @@ export default function Sidebar() {
         >
           <Settings className="w-4 h-4" /> Settings
         </NavLink>
-        {isAdmin && (
-          <NavLink
-            to="/settings/users"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`
-            }
-          >
-            <Users className="w-4 h-4" /> Team
-          </NavLink>
-        )}
 
         {/* User info */}
         <div className="mt-2 border-t border-white/10 pt-2">
