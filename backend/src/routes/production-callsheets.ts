@@ -237,20 +237,34 @@ router.post('/:id/import-shots', upload.single('file'), async (req: Request, res
 
   const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
   const ws = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: '' });
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+
+  // Log raw rows for debugging column headers
+  console.log('[import-shots] columns detected:', rows[0] ? Object.keys(rows[0]) : 'no rows');
+  console.log('[import-shots] first 3 rows:', JSON.stringify(rows.slice(0, 3)));
 
   let order = sheet.shots.reduce((m, s) => Math.max(m, s.sortOrder), -1) + 1;
   let imported = 0;
+
   for (const row of rows) {
-    const description = String(row['Shot'] || row['Description'] || row['description'] || '').trim();
+    // Normalize: lowercase + trim all keys for case-insensitive matching
+    const norm: Record<string, string> = {};
+    for (const key of Object.keys(row)) {
+      norm[key.toLowerCase().trim()] = String(row[key] ?? '').trim();
+    }
+    // Helper: first matching non-empty value from a list of candidate keys
+    const get = (...keys: string[]) => keys.map((k) => norm[k.toLowerCase().trim()]).find((v) => v) ?? '';
+
+    const description = get('shot', 'description', 'shot description');
     if (!description) continue;
+
     await prisma.productionShot.create({
       data: {
         callSheetId: sheet.id,
-        shootingLocation: String(row['Shooting Location'] || row['Location'] || '').trim() || null,
+        shootingLocation: get('shooting location', 'location', 'shot location') || null,
         description,
-        timing: String(row['Timing'] || '').trim() || null,
-        notes: String(row['Notes'] || '').trim() || null,
+        timing: get('timing') || null,
+        notes: get('notes') || null,
         sortOrder: order++,
       },
     });
