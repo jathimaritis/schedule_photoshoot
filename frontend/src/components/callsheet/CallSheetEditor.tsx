@@ -101,7 +101,7 @@ function FieldBlock({
             ))}
           </SortableContext>
         </DndContext>
-        <button onClick={() => onAdd(group)} className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-[#1A1A2E]">
+        <button onClick={() => onAdd(group)} className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-[#2C2318]">
           <Plus className="w-3.5 h-3.5" /> Add field
         </button>
       </div>
@@ -114,12 +114,12 @@ function FieldBlock({
 function TimeInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium uppercase tracking-wide" style={{ color: '#7A5C3A' }}>{label}</label>
       <input
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#1A1A2E] bg-white"
+        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#7A5C3A] bg-white"
       />
     </div>
   );
@@ -302,7 +302,7 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
   };
 
   if (isLoading || !callSheet) {
-    return <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1A1A2E]" /></div>;
+    return <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2C2318]" /></div>;
   }
 
   const day = callSheet.shootingDay!;
@@ -310,8 +310,8 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
   const typeColour = type?.hexColour ?? '#1A1A2E';
 
   const FIELD_BLOCK_COLOURS: Record<FieldGroup, string> = {
-    CREW: '#1A1A2E',
-    CLIENT: '#2C2C54',
+    CREW: '#2C2318',
+    CLIENT: '#7A5C3A',
     LOGISTICS: typeColour,
   };
 
@@ -334,13 +334,13 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
     <div className="max-w-4xl mx-auto print-full">
       {/* Export button */}
       <div className="flex justify-end mb-4 no-print">
-        <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-[#1A1A2E] text-white rounded-md text-sm hover:bg-[#2C2C54]">
+        <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-[#2C2318] text-white rounded-md text-sm hover:bg-[#7A5C3A]">
           <Download className="w-4 h-4" /> Export .xlsx
         </button>
       </div>
 
       {/* Title bar */}
-      <div className="px-6 py-4 flex items-center justify-center" style={{ backgroundColor: '#1A1A2E' }}>
+      <div className="px-6 py-4 flex items-center justify-center" style={{ backgroundColor: '#2C2318' }}>
         <h1 className="text-xl font-bold tracking-widest" style={{ color: '#D4AF37' }}>
           SHOOTING DAY {day.dayNumber} — CALL SHEET
         </h1>
@@ -355,7 +355,7 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
       </div>
 
       {/* Location + Notes */}
-      <div className="bg-gray-50 border-b border-gray-200">
+      <div className="border-b border-gray-200" style={{ backgroundColor: '#F5F0EB' }}>
         <div className="px-6 pt-3 pb-1">
           <PlacesAutocompleteInput
             value={meta.location ?? ''}
@@ -394,14 +394,14 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
         <div className="mb-3 flex items-center justify-between">
           <div
             className="flex items-center gap-2 px-4 py-2 font-bold text-white text-sm uppercase tracking-wider"
-            style={{ backgroundColor: typeColour }}
+            style={{ backgroundColor: '#7A5C3A', borderBottom: '2px solid #B89A7A' }}
           >
             <Sun className="w-4 h-4" /> Light Times &amp; Weather
           </div>
           <button
             onClick={fetchLightTimes}
             disabled={fetchingLight}
-            className="flex items-center gap-1.5 text-xs text-[#1A1A2E] hover:underline disabled:opacity-50 font-medium no-print"
+            className="flex items-center gap-1.5 text-xs text-[#7A5C3A] hover:underline disabled:opacity-50 font-medium no-print"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${fetchingLight ? 'animate-spin' : ''}`} />
             Auto-populate from location &amp; date
@@ -425,7 +425,7 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
         </div>
 
         {weather && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-gray-100 rounded p-3 bg-gray-50">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-gray-100 rounded p-3" style={{ backgroundColor: '#F5F0EB' }}>
             {weather.description && (
               <div className="flex items-center gap-2">
                 <Sun className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -472,7 +472,7 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
 
       {/* Shot list */}
       <div className="bg-white">
-        <div className="grid grid-cols-4 gap-0 border-b-2 border-gray-300" style={{ backgroundColor: '#1A1A2E' }}>
+        <div className="grid grid-cols-4 gap-0 border-b-2 border-gray-300" style={{ backgroundColor: '#2C2318' }}>
           {['SHOT / LOCATION', 'TIMING', 'NOTES / DIRECTION', 'STATUS'].map((h) => (
             <div key={h} className="px-3 py-2 text-xs font-bold text-white text-center">{h}</div>
           ))}
@@ -485,13 +485,13 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
         ) : (
           Array.from(shotsByLoc.values()).map(({ locName, shots }) => (
             <div key={locName}>
-              <div className="px-3 py-2 font-bold text-sm text-gray-800 bg-[#F0F0F0] border-b border-gray-200">
+              <div className="px-3 py-2 font-bold text-sm border-b border-gray-200" style={{ backgroundColor: '#F5F0EB', color: '#2C2318' }}>
                 {locName}
               </div>
               {shots.map((cs, i) => (
                 <div
                   key={cs.id}
-                  className={clsx('grid grid-cols-4 gap-0 border-b border-gray-100 text-sm', i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}
+                  className={clsx('grid grid-cols-4 gap-0 border-b border-gray-100 text-sm', i % 2 === 0 ? 'bg-[#FAFAF8]' : 'bg-[#F5F0EB]')}
                 >
                   <div className="px-3 py-2">{cs.shot.description}</div>
                   <div className="px-3 py-2 text-gray-500">{cs.shot.timing ?? ''}</div>
@@ -507,7 +507,7 @@ export default function CallSheetEditor({ projectId, dayId }: CallSheetEditorPro
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 bg-[#F0F0F0] text-xs text-gray-500 text-center italic">
+      <div className="px-4 py-2 text-xs text-center italic" style={{ backgroundColor: '#F5F0EB', color: '#7A5C3A' }}>
         Confidential — {new Date().getFullYear()}
       </div>
     </div>
