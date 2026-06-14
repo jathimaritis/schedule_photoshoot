@@ -2,11 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireApproved } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router();
 router.use(authenticate);
+router.use(requireApproved);
 
 const updateProfileSchema = z.object({
   name: z.string().min(1).optional(),

@@ -2,11 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { FieldGroup } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole } from '../middleware/auth';
+import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireApproved);
 
 const DEFAULT_CREW_FIELDS = ['Producer', 'Photographer', 'Interior Stylist', "Photographer's Assistant", 'Videographer', 'Wardrobe', 'Hair & Make Up', 'Models'];
 const DEFAULT_CLIENT_FIELDS = ["Client's Name", 'Creative Director', 'Project Manager', 'On Site Manager'];

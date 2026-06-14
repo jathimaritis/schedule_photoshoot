@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import slugify from 'slugify';
-import { Role } from '@prisma/client';
+import { Role, UserStatus } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { sendInviteEmail, sendPasswordResetEmail } from '../utils/email';
@@ -74,11 +74,26 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
     data: { name: organisationName, slug },
   });
 
+  // Admin email gets immediate full access; everyone else starts PENDING
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  const isAdminEmail = adminEmail && email.toLowerCase() === adminEmail;
+  const userStatus: UserStatus = isAdminEmail ? 'APPROVED' : 'PENDING';
+
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, role: 'OWNER', moduleAccess: 'BOTH', organisationId: org.id },
+    data: {
+      name, email, passwordHash, role: 'OWNER', moduleAccess: 'BOTH', organisationId: org.id,
+      status: userStatus as 'APPROVED' | 'PENDING',
+      accessScheduler: !!isAdminEmail,
+      accessCallSheet: !!isAdminEmail,
+      isAdmin: !!isAdminEmail,
+    },
   });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: org.id };
+  const payload = {
+    userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess,
+    organisationId: org.id, status: userStatus, accessScheduler: user.accessScheduler,
+    accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
+  };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -87,7 +102,14 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
   });
 
   setRefreshCookie(res, refreshToken);
-  res.status(201).json({ accessToken, user: { id: user.id, name, email, role: user.role, moduleAccess: user.moduleAccess, organisationId: org.id } });
+  res.status(201).json({
+    accessToken,
+    user: {
+      id: user.id, name, email, role: user.role, moduleAccess: user.moduleAccess,
+      organisationId: org.id, status: userStatus, accessScheduler: user.accessScheduler,
+      accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
+    },
+  });
 });
 
 router.post('/login', validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
@@ -107,7 +129,11 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
+  const payload = {
+    userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess,
+    organisationId: user.organisationId, status: user.status as UserStatus, accessScheduler: user.accessScheduler,
+    accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
+  };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -119,13 +145,10 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
   res.json({
     accessToken,
     user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      moduleAccess: user.moduleAccess,
-      organisationId: user.organisationId,
-      avatarUrl: user.avatarUrl,
+      id: user.id, name: user.name, email: user.email, role: user.role,
+      moduleAccess: user.moduleAccess, organisationId: user.organisationId, avatarUrl: user.avatarUrl,
+      status: user.status as UserStatus, accessScheduler: user.accessScheduler,
+      accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
       organisation: { id: user.organisation.id, name: user.organisation.name, slug: user.organisation.slug, logoUrl: user.organisation.logoUrl },
     },
   });
@@ -163,7 +186,11 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
 
     await prisma.refreshToken.update({ where: { token }, data: { revokedAt: new Date() } });
 
-    const newPayload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
+    const newPayload = {
+      userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess,
+      organisationId: user.organisationId, status: user.status as UserStatus,
+      accessScheduler: user.accessScheduler, accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
+    };
     const accessToken = signAccessToken(newPayload);
     const refreshToken = signRefreshToken(newPayload);
 
@@ -172,7 +199,15 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
     });
 
     setRefreshCookie(res, refreshToken);
-    res.json({ accessToken });
+    res.json({
+      accessToken,
+      user: {
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        moduleAccess: user.moduleAccess, organisationId: user.organisationId, avatarUrl: user.avatarUrl,
+        status: user.status as UserStatus, accessScheduler: user.accessScheduler,
+        accessCallSheet: user.accessCallSheet, isAdmin: user.isAdmin,
+      },
+    });
   } catch {
     res.status(401).json({ error: 'Invalid refresh token' });
   }
@@ -220,12 +255,18 @@ router.post('/accept-invite/:token', validate(acceptInviteSchema), async (req: R
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
-    data: { name, email: invite.email, passwordHash, role: invite.role, moduleAccess: 'NONE', organisationId: invite.organisationId },
+    data: {
+      name, email: invite.email, passwordHash, role: invite.role, moduleAccess: 'NONE',
+      organisationId: invite.organisationId, status: 'PENDING' as UserStatus, accessScheduler: false, accessCallSheet: false,
+    },
   });
 
   await prisma.inviteToken.update({ where: { token }, data: { usedAt: new Date() } });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
+  const payload = {
+    userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess,
+    organisationId: user.organisationId, status: 'PENDING' as UserStatus, accessScheduler: false, accessCallSheet: false, isAdmin: false,
+  };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -234,7 +275,13 @@ router.post('/accept-invite/:token', validate(acceptInviteSchema), async (req: R
   });
 
   setRefreshCookie(res, refreshToken);
-  res.status(201).json({ accessToken, user: { id: user.id, name, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId } });
+  res.status(201).json({
+    accessToken,
+    user: {
+      id: user.id, name, email: user.email, role: user.role, moduleAccess: user.moduleAccess,
+      organisationId: user.organisationId, status: 'PENDING' as UserStatus, accessScheduler: false, accessCallSheet: false, isAdmin: false,
+    },
+  });
 });
 
 router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Request, res: Response): Promise<void> => {

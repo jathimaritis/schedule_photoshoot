@@ -80,6 +80,17 @@ async function applySchemaPatches() {
     ['ProductionCallSheet.weatherData', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "weatherData" JSONB`],
     ['ProductionCallSheet.locationLat', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLat" DOUBLE PRECISION`],
     ['ProductionCallSheet.locationLng', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLng" DOUBLE PRECISION`],
+    // User status + access flags
+    ['UserStatus enum', `DO $$ BEGIN CREATE TYPE "UserStatus" AS ENUM ('PENDING','APPROVED','RESTRICTED'); EXCEPTION WHEN duplicate_object THEN null; END $$`],
+    ['User.status', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "status" "UserStatus" NOT NULL DEFAULT 'PENDING'`],
+    ['User.accessScheduler', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessScheduler" BOOLEAN NOT NULL DEFAULT false`],
+    ['User.accessCallSheet', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessCallSheet" BOOLEAN NOT NULL DEFAULT false`],
+    ['User.isAdmin', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isAdmin" BOOLEAN NOT NULL DEFAULT false`],
+    // Migrate existing approved users
+    [`User.status approved existing`, `UPDATE "User" SET "status" = 'APPROVED' WHERE ("role"::text IN ('OWNER','ADMIN') OR "moduleAccess"::text != 'NONE') AND "status"::text = 'PENDING'`],
+    [`User.accessScheduler existing`, `UPDATE "User" SET "accessScheduler" = true WHERE "moduleAccess"::text IN ('SCHEDULER','BOTH') OR "role"::text IN ('OWNER','ADMIN')`],
+    [`User.accessCallSheet existing`, `UPDATE "User" SET "accessCallSheet" = true WHERE "moduleAccess"::text IN ('CALL_SHEET','BOTH') OR "role"::text IN ('OWNER','ADMIN')`],
+    [`User.isAdmin existing owners`, `UPDATE "User" SET "isAdmin" = true WHERE "role"::text = 'OWNER'`],
   ];
 
   for (const [name, sql] of patches) {
@@ -89,8 +100,23 @@ async function applySchemaPatches() {
   }
 }
 
+async function applyAdminEmail() {
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  if (!adminEmail) return;
+  try {
+    const result = await prisma.$executeRawUnsafe(
+      `UPDATE "User" SET "isAdmin" = true, "status" = 'APPROVED', "accessScheduler" = true, "accessCallSheet" = true WHERE LOWER("email") = $1`,
+      adminEmail
+    );
+    if (result > 0) console.log(`[admin-email] granted admin to ${adminEmail}`);
+  } catch (e: unknown) {
+    console.warn('[admin-email] patch skipped:', (e as Error).message);
+  }
+}
+
 async function start() {
   await applySchemaPatches();
+  await applyAdminEmail();
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);

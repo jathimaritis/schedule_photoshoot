@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole } from '../middleware/auth';
+import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireApproved);
 
 const typeSchema = z.object({
   name: z.string().min(1),

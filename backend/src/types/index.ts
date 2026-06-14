@@ -1,4 +1,6 @@
-import { Role, ModuleAccess } from '@prisma/client';
+import { Role, ModuleAccess, UserStatus } from '@prisma/client';
+
+export type { UserStatus };
 
 export interface JwtPayload {
   userId: string;
@@ -6,6 +8,10 @@ export interface JwtPayload {
   role: Role;
   moduleAccess: ModuleAccess;
   organisationId: string;
+  status?: UserStatus;
+  accessScheduler?: boolean;
+  accessCallSheet?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface AuthRequest extends Express.Request {

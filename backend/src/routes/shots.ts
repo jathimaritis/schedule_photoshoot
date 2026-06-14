@@ -3,11 +3,12 @@ import { z } from 'zod';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole } from '../middleware/auth';
+import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireApproved);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const sectionSchema = z.object({ name: z.string().min(1), sortOrder: z.number().int().optional(), photographyTypeId: z.string().optional().nullable() });

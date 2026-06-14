@@ -40,6 +40,12 @@ enum ModuleAccess {
   BOTH
 }
 
+enum UserStatus {
+  PENDING
+  APPROVED
+  RESTRICTED
+}
+
 model Organisation {
   id               String    @id @default(cuid())
   name             String
@@ -64,6 +70,10 @@ model User {
   avatarUrl      String?
   role           Role         @default(VIEWER)
   moduleAccess   ModuleAccess @default(NONE)
+  status         UserStatus   @default(PENDING)
+  accessScheduler Boolean     @default(false)
+  accessCallSheet Boolean     @default(false)
+  isAdmin        Boolean      @default(false)
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   lastLoginAt    DateTime?
