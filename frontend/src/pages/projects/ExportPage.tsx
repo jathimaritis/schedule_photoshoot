@@ -9,16 +9,28 @@ import { format } from 'date-fns';
 
 async function downloadFile(url: string, filename: string) {
   try {
-    const response = await api.get(url, { responseType: 'blob' });
-    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const response = await api.get(url, { responseType: 'arraybuffer' });
+    const contentType: string = response.headers['content-type'] ?? '';
+    if (!contentType.includes('spreadsheetml')) {
+      // Server returned an error response — decode it and surface the message
+      const text = new TextDecoder().decode(response.data as ArrayBuffer);
+      let msg = 'Export failed — please try again';
+      try { msg = JSON.parse(text)?.error ?? msg; } catch { /* ignore */ }
+      toast.error(msg);
+      return;
+    }
+    const blob = new Blob([response.data as ArrayBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
     toast.success('Download started');
-  } catch {
-    toast.error('Export failed');
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+    toast.error(msg ?? 'Export failed — please try again');
   }
 }
 

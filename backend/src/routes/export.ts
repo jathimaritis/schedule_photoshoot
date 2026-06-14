@@ -67,34 +67,46 @@ async function getFullProject(projectId: string, organisationId: string): Promis
   } as unknown as ScheduleProject;
 }
 
-router.get('/schedule.xlsx', async (req: Request, res: Response): Promise<void> => {
-  const project = await getFullProject(req.params.id, req.user!.organisationId);
-  if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
-
-  const buffer = await buildScheduleWorkbook(project);
+function sendXlsx(res: Response, buffer: Buffer, filename: string) {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_schedule.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(buffer);
+}
+
+router.get('/schedule.xlsx', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const project = await getFullProject(req.params.id, req.user!.organisationId);
+    if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
+    const buffer = await buildScheduleWorkbook(project);
+    sendXlsx(res, buffer, `${project.name.replace(/[^a-z0-9]/gi, '_')}_schedule.xlsx`);
+  } catch (err) {
+    console.error('Schedule export error:', err);
+    res.status(500).json({ error: 'Failed to generate export. Please try again.' });
+  }
 });
 
 router.get('/callsheets.xlsx', async (req: Request, res: Response): Promise<void> => {
-  const project = await getFullProject(req.params.id, req.user!.organisationId);
-  if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
-
-  const buffer = await buildAllCallSheetsWorkbook(project);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${project.name.replace(/[^a-z0-9]/gi, '_')}_callsheets.xlsx"`);
-  res.send(buffer);
+  try {
+    const project = await getFullProject(req.params.id, req.user!.organisationId);
+    if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
+    const buffer = await buildAllCallSheetsWorkbook(project);
+    sendXlsx(res, buffer, `${project.name.replace(/[^a-z0-9]/gi, '_')}_callsheets.xlsx`);
+  } catch (err) {
+    console.error('Callsheets export error:', err);
+    res.status(500).json({ error: 'Failed to generate export. Please try again.' });
+  }
 });
 
 router.get('/callsheet/:dayId.xlsx', async (req: Request, res: Response): Promise<void> => {
-  const project = await getFullProject(req.params.id, req.user!.organisationId);
-  if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
-
-  const buffer = await buildSingleCallSheetWorkbook(project, req.params.dayId);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="callsheet_day_${req.params.dayId}.xlsx"`);
-  res.send(buffer);
+  try {
+    const project = await getFullProject(req.params.id, req.user!.organisationId);
+    if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
+    const buffer = await buildSingleCallSheetWorkbook(project, req.params.dayId);
+    sendXlsx(res, buffer, `callsheet_day_${req.params.dayId}.xlsx`);
+  } catch (err) {
+    console.error('Callsheet export error:', err);
+    res.status(500).json({ error: 'Failed to generate export. Please try again.' });
+  }
 });
 
 export default router;

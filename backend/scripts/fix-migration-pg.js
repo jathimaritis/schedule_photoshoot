@@ -5,7 +5,11 @@ const { Client } = require('pg');
 const url = process.env.DATABASE_URL;
 if (!url) { console.log('fix-migration: no DATABASE_URL, skipping'); process.exit(0); }
 
-const client = new Client({ connectionString: url });
+// Render databases require SSL; rejectUnauthorized:false works for self-signed certs
+const client = new Client({
+  connectionString: url,
+  ssl: url.includes('localhost') ? false : { rejectUnauthorized: false },
+});
 
 client.connect()
   .then(() => client.query(`
