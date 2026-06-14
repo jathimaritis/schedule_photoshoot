@@ -9,6 +9,10 @@ export const orgApi = {
     api.put(`/org/users/${userId}/role`, { role }).then((r) => r.data),
   updateAccess: (userId: string, moduleAccess: string) =>
     api.put(`/org/users/${userId}/access`, { moduleAccess }).then((r) => r.data),
+  updateStatus: (userId: string, status: string) =>
+    api.put(`/org/users/${userId}/status`, { status }).then((r) => r.data),
+  updateAccessFlags: (userId: string, data: { accessScheduler?: boolean; accessCallSheet?: boolean }) =>
+    api.put(`/org/users/${userId}/access-flags`, data).then((r) => r.data),
   removeUser: (userId: string) => api.delete(`/org/users/${userId}`).then((r) => r.data),
   revokeInvite: (inviteId: string) => api.delete(`/org/invites/${inviteId}`).then((r) => r.data),
 };

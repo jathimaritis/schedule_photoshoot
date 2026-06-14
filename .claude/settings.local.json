@@ -17,7 +17,16 @@
       "Bash(GIT_EDITOR=true git rebase --continue)",
       "Bash(git *)",
       "Bash(GIT_EDITOR=\"echo\" git rebase *)",
-      "Bash(mkdir -p prisma/migrations/20260521000000_init)"
+      "Bash(mkdir -p prisma/migrations/20260521000000_init)",
+      "Bash(npm run *)",
+      "Bash(node -e ' *)",
+      "Bash(node --input-type=module)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(npx tsx *)",
+      "Bash(node *)",
+      "Bash(xargs ls)",
+      "Bash(sed -i '' \"s/status: 'PENDING', accessScheduler: false, accessCallSheet: false, isAdmin: false/status: 'PENDING' as UserStatus, accessScheduler: false, accessCallSheet: false, isAdmin: false/g\" /Users/john/schedule_photoshoot/backend/src/routes/auth.ts)",
+      "Bash(sed -i '' \"s/organisationId: invite.organisationId, status: 'PENDING', accessScheduler:/organisationId: invite.organisationId, status: 'PENDING' as UserStatus, accessScheduler:/g\" /Users/john/schedule_photoshoot/backend/src/routes/auth.ts)"
     ]
   }
 }
