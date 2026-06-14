@@ -12,9 +12,27 @@ const DEFAULT_CREW_FIELDS = ['Producer', 'Photographer', 'Interior Stylist', "Ph
 const DEFAULT_CLIENT_FIELDS = ["Client's Name", 'Creative Director', 'Project Manager', 'On Site Manager'];
 const DEFAULT_LOGISTICS_FIELDS = ['Start of Day', 'Breakfast', 'Lunch', 'Dinner', 'End of Day'];
 
+const weatherDataSchema = z.object({
+  description: z.string().optional().nullable(),
+  tempMax: z.number().optional().nullable(),
+  tempMin: z.number().optional().nullable(),
+  precipitation: z.number().optional().nullable(),
+  windSpeed: z.number().optional().nullable(),
+}).optional().nullable();
+
 const updateCallSheetSchema = z.object({
   notes: z.string().optional().nullable(),
   isLocked: z.boolean().optional(),
+  location: z.string().optional().nullable(),
+  locationLat: z.number().optional().nullable(),
+  locationLng: z.number().optional().nullable(),
+  sunrise: z.string().optional().nullable(),
+  sunset: z.string().optional().nullable(),
+  goldenHourAm: z.string().optional().nullable(),
+  goldenHourPm: z.string().optional().nullable(),
+  blueHourAm: z.string().optional().nullable(),
+  blueHourPm: z.string().optional().nullable(),
+  weatherData: weatherDataSchema,
 });
 
 const fieldsSchema = z.object({

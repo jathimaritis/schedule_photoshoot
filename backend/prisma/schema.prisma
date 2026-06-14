@@ -257,6 +257,16 @@ model CallSheet {
   id            String    @id @default(cuid())
   notes         String?
   isLocked      Boolean   @default(false)
+  location      String?
+  locationLat   Float?
+  locationLng   Float?
+  sunrise       String?
+  sunset        String?
+  goldenHourAm  String?
+  goldenHourPm  String?
+  blueHourAm    String?
+  blueHourPm    String?
+  weatherData   Json?
   shootingDay   ShootingDay @relation(fields: [shootingDayId], references: [id], onDelete: Cascade)
   shootingDayId String    @unique
   project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
