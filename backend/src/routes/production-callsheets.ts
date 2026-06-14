@@ -381,148 +381,248 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
     const sheet = await getSheet(req.params.id, req.user!.organisationId);
     if (!sheet) { res.status(404).json({ error: 'Not found' }); return; }
 
+    const org = await prisma.organisation.findUnique({
+      where: { id: sheet.organisationId },
+      select: { logoUrl: true },
+    });
+    const logoUrl = org?.logoUrl ?? null;
+
     const contacts = (Array.isArray(sheet.contacts) ? sheet.contacts : []) as Array<{
       title?: string; name?: string; phone?: string; email?: string;
     }>;
     const wd = sheet.weatherData as { description?: string; tempMax?: number; tempMin?: number; precipitation?: number; windSpeed?: number } | null;
 
+    // ── Brand colours (no # prefix) ───────────────────────────────────────
+    const DARK   = '2C2318';
+    const MID    = '7A5C3A';
+    const TAN    = 'B89A7A';
+    const CREAM  = 'F5F0EB';
+    const OWHITE = 'FAFAF8';
+
+    const mkFill = (c: string): ExcelJS.Fill =>
+      ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${c}` } });
+    const tanBorder = (): Partial<ExcelJS.Borders> =>
+      ({ bottom: { style: 'thin', color: { argb: `FF${TAN}` } } });
+    const medBorder = (): Partial<ExcelJS.Borders> =>
+      ({ bottom: { style: 'medium', color: { argb: `FF${TAN}` } } });
+    const bodyFont = (color = DARK, size = 10, bold = false): Partial<ExcelJS.Font> =>
+      ({ name: 'Calibri', size, bold, color: { argb: `FF${color}` } });
+    const wFont = (size = 10, bold = false): Partial<ExcelJS.Font> =>
+      ({ name: 'Calibri', size, bold, color: { argb: 'FFFFFFFF' } });
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Photoshoot Scheduler';
-    const NAVY = '1A1A2E';
-    const PURPLE = '2C2C54';
-    const LIGHT = 'F2F2F2';
-    const STRIPE = 'FAFAFA';
-
-    // Helpers
-    const fill = (hex: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}` } });
-    // wfont: white bold (for headers); bfont: dark regular/bold (for body)
-    const wfont = (sz = 12): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FFFFFFFF' }, bold: true });
-    const bfont = (sz = 11, bold = false): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FF1A1A1A' }, bold });
-
-    // Single worksheet, 5 columns: Label(A) | Value(B) | Label2(C) | Value2(D) | Status/Extra(E)
     const ws = wb.addWorksheet('Call Sheet');
-    ws.columns = [{ width: 22 }, { width: 30 }, { width: 18 }, { width: 28 }, { width: 14 }];
 
-    // Fit to 1 page wide when printed
-    ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' };
+    // Columns: A=# B=Location C=Description D=Timing E=Notes F=Done
+    ws.columns = [
+      { width: 5  },   // A  #
+      { width: 25 },   // B  Shooting Location / label1
+      { width: 35 },   // C  Description / value1
+      { width: 15 },   // D  Timing / label2  (15 to fit "Golden Hour PM")
+      { width: 20 },   // E  Notes / value2
+      { width: 8  },   // F  Done
+    ];
 
-    // ── Title bar ──────────────────────────────────────────────────────────
-    const titleRow = ws.addRow([`${sheet.projectName} — PRODUCTION CALL SHEET`]);
-    ws.mergeCells(`A${titleRow.number}:E${titleRow.number}`);
-    titleRow.getCell(1).fill = fill(NAVY);
-    titleRow.getCell(1).font = wfont(15);
-    titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-    titleRow.height = 36;
-    ws.addRow([]); // spacer
+    ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    ws.views = [{ state: 'frozen', ySplit: 6, showGridLines: false }];
 
-    // ── Section header helper ──────────────────────────────────────────────
-    const sectionHeader = (label: string) => {
-      ws.addRow([]);
-      const r = ws.addRow([label]);
-      ws.mergeCells(`A${r.number}:E${r.number}`);
-      r.getCell(1).fill = fill(PURPLE);
-      r.getCell(1).font = wfont(12);
-      r.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-      r.height = 24;
+    const shootDate = sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '';
+    const subLine   = [sheet.client, sheet.location, shootDate].filter(Boolean).join('   |   ');
+
+    // merge helper: merges columns from→to on a given row object
+    const merge = (r: ExcelJS.Row, from: string, to: string) =>
+      ws.mergeCells(`${from}${r.number}:${to}${r.number}`);
+
+    // ── HEADER BLOCK rows 1–5 ─────────────────────────────────────────────
+    const r1 = ws.addRow(['']); merge(r1, 'A', 'F'); r1.height = 8;
+    r1.getCell(1).fill = mkFill(DARK);
+
+    const r2 = ws.addRow(['']); merge(r2, 'A', 'F'); r2.height = 38; // logo row
+    r2.getCell(1).fill = mkFill(DARK);
+
+    const r3 = ws.addRow(['PRODUCTION CALL SHEET']); merge(r3, 'A', 'F'); r3.height = 18;
+    r3.getCell(1).fill = mkFill(DARK);
+    r3.getCell(1).font = wFont(11);
+    r3.getCell(1).alignment = { vertical: 'middle', indent: 1 };
+
+    const r4 = ws.addRow([sheet.projectName]); merge(r4, 'A', 'F'); r4.height = 24;
+    r4.getCell(1).fill = mkFill(DARK);
+    r4.getCell(1).font = wFont(14, true);
+    r4.getCell(1).alignment = { vertical: 'middle', indent: 1 };
+
+    const r5 = ws.addRow([subLine]); merge(r5, 'A', 'F'); r5.height = 18;
+    r5.getCell(1).fill = mkFill(DARK);
+    r5.getCell(1).font = wFont(10);
+    r5.getCell(1).alignment = { vertical: 'middle', indent: 1 };
+
+    // ── ACCENT BAR row 6 ──────────────────────────────────────────────────
+    const r6 = ws.addRow(['']); merge(r6, 'A', 'F'); r6.height = 4;
+    r6.getCell(1).fill = mkFill(TAN);
+
+    // ── Logo image (overlays rows 1–2) ────────────────────────────────────
+    if (logoUrl) {
+      try {
+        const m = logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+        if (m) {
+          const ext = m[1] === 'webp' ? 'png' : m[1] as 'png' | 'jpeg' | 'gif';
+          const imgId = wb.addImage({ base64: m[2], extension: ext });
+          ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 45 } });
+        }
+      } catch { /* skip */ }
+    }
+
+    // ── Section header helper ─────────────────────────────────────────────
+    const sectionHdr = (label: string) => {
+      const r = ws.addRow([label.toUpperCase()]); merge(r, 'A', 'F');
+      r.height = 22;
+      r.getCell(1).fill = mkFill(CREAM);
+      r.getCell(1).font = bodyFont(MID, 10, true);
+      r.getCell(1).alignment = { vertical: 'middle', indent: 1 };
+      r.getCell(1).border = medBorder();
     };
 
-    // ── Pair row helper (label1 | value1 | label2 | value2) ───────────────
-    const pairRow = (l1: string, v1: string, l2 = '', v2 = '', stripe = false) => {
-      const r = ws.addRow([l1, v1, l2, v2, '']);
-      r.getCell(1).fill = fill(LIGHT); r.getCell(1).font = bfont(11, true);
-      r.getCell(2).font = bfont(11); r.getCell(2).alignment = { wrapText: false };
-      if (l2) {
-        r.getCell(3).fill = fill(LIGHT); r.getCell(3).font = bfont(11, true);
-        r.getCell(4).font = bfont(11);
-      }
-      if (stripe) {
-        r.getCell(2).fill = fill(STRIPE);
-        r.getCell(4).fill = fill(STRIPE);
-        r.getCell(5).fill = fill(STRIPE);
-      }
-      r.height = 22;
-      return r;
+    // ── Detail row helper: A=empty B=label C=value D=label2 E=value2 F=empty ─
+    let dAlt = 0;
+    const detailRow = (l1: string, v1: string, l2 = '', v2 = '') => {
+      const bg = dAlt++ % 2 === 0 ? CREAM : OWHITE;
+      const r = ws.addRow(['', l1, v1, l2, v2, '']);
+      r.height = 20;
+      for (let c = 1; c <= 6; c++) r.getCell(c).fill = mkFill(bg);
+      r.getCell(2).font = bodyFont(MID, 10);
+      r.getCell(2).alignment = { vertical: 'middle' };
+      r.getCell(3).font = bodyFont(DARK, 10);
+      r.getCell(3).alignment = { vertical: 'middle', wrapText: true };
+      r.getCell(4).font = bodyFont(MID, 10);
+      r.getCell(4).alignment = { vertical: 'middle' };
+      r.getCell(5).font = bodyFont(DARK, 10);
+      r.getCell(5).alignment = { vertical: 'middle', wrapText: true };
     };
 
     // ── PROJECT DETAILS ───────────────────────────────────────────────────
-    sectionHeader('PROJECT DETAILS');
-    pairRow('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
-    pairRow('Location', sheet.location ?? '', 'Shooting Date',
-      sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '');
+    dAlt = 0;
+    sectionHdr('Project Details');
+    detailRow('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
+    detailRow('Location', sheet.location ?? '', 'Shooting Date', shootDate);
 
-    // General Notes — full-width, tall, wrapped
-    const notesRow = ws.addRow(['General Notes', sheet.generalNotes ?? '', '', '', '']);
-    ws.mergeCells(`B${notesRow.number}:E${notesRow.number}`);
-    notesRow.getCell(1).fill = fill(LIGHT); notesRow.getCell(1).font = bfont(11, true);
-    notesRow.getCell(1).alignment = { vertical: 'top' };
-    notesRow.getCell(2).font = bfont(11);
-    notesRow.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-    notesRow.height = 72; // ~96px — tall enough for multi-line notes
+    // General Notes — full-width, min 80px
+    const nr = ws.addRow(['', 'General Notes', sheet.generalNotes ?? '']);
+    ws.mergeCells(`C${nr.number}:F${nr.number}`);
+    nr.height = 80;
+    for (let c = 1; c <= 6; c++) nr.getCell(c).fill = mkFill(OWHITE);
+    nr.getCell(2).font = bodyFont(MID, 10);
+    nr.getCell(2).alignment = { vertical: 'top' };
+    nr.getCell(3).font = bodyFont(DARK, 10);
+    nr.getCell(3).alignment = { wrapText: true, vertical: 'top' };
 
     // ── CREW & CLIENT CONTACTS ────────────────────────────────────────────
-    sectionHeader('CREW & CLIENT CONTACTS');
+    sectionHdr('Crew & Client Contacts');
     if (contacts.length === 0) {
-      const er = ws.addRow(['No contacts added.', '', '', '', '']);
-      ws.mergeCells(`A${er.number}:E${er.number}`);
-      er.getCell(1).font = bfont(11); er.height = 22;
+      const er = ws.addRow(['No contacts added.']); merge(er, 'A', 'F');
+      er.height = 20;
+      er.getCell(1).fill = mkFill(OWHITE);
+      er.getCell(1).font = bodyFont(DARK, 10);
+      er.getCell(1).alignment = { indent: 1, vertical: 'middle' };
     } else {
-      // Column header
-      const ch = ws.addRow(['Title', 'Name', 'Phone', 'Email', '']);
-      ws.mergeCells(`D${ch.number}:E${ch.number}`);
-      for (let c = 1; c <= 4; c++) {
-        ch.getCell(c).fill = fill('3C3C64');
-        ch.getCell(c).font = wfont(11);
-        ch.getCell(c).alignment = { horizontal: 'center' };
-      }
+      // Header: A=Title B=Name C=Phone D=Email E+F=empty
+      const ch = ws.addRow(['Title', 'Name', 'Phone', 'Email', '', '']);
+      ws.mergeCells(`E${ch.number}:F${ch.number}`);
       ch.height = 22;
-      contacts.forEach((ct, i) => {
-        const r = ws.addRow([ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? '', '']);
-        ws.mergeCells(`D${r.number}:E${r.number}`);
-        const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
-        for (let c = 1; c <= 4; c++) { r.getCell(c).fill = fill(bg); r.getCell(c).font = bfont(11); }
-        r.height = 20;
+      for (let c = 1; c <= 6; c++) {
+        ch.getCell(c).fill = mkFill(DARK);
+        ch.getCell(c).font = wFont(10, true);
+        ch.getCell(c).alignment = { vertical: 'middle', indent: 1 };
+      }
+      contacts.forEach((ct, idx) => {
+        const bg = idx % 2 === 0 ? CREAM : OWHITE;
+        const cr = ws.addRow([ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? '', '', '']);
+        ws.mergeCells(`E${cr.number}:F${cr.number}`);
+        cr.height = 20;
+        for (let c = 1; c <= 6; c++) {
+          cr.getCell(c).fill = mkFill(bg);
+          cr.getCell(c).font = bodyFont(DARK, 10);
+          cr.getCell(c).alignment = { vertical: 'middle', wrapText: true };
+        }
       });
     }
 
     // ── LIGHT TIMES & WEATHER ─────────────────────────────────────────────
-    sectionHeader('LIGHT TIMES & WEATHER');
-    pairRow('Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? '');
-    pairRow('Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? '');
-    pairRow('Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? '');
+    dAlt = 0;
+    sectionHdr('Light Times & Weather');
+    detailRow('Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? '');
+    detailRow('Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? '');
+    detailRow('Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? '');
     if (wd) {
       const temp = wd.tempMin != null && wd.tempMax != null
         ? `${wd.tempMin}° – ${wd.tempMax}°C`
         : wd.tempMax != null ? `${wd.tempMax}°C` : '';
-      pairRow('Conditions', wd.description ?? '', 'Temperature', temp, true);
-      pairRow('Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '',
+      detailRow('Conditions', wd.description ?? '', 'Temperature', temp);
+      detailRow('Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '',
         'Wind Speed', wd.windSpeed != null ? `${wd.windSpeed} km/h` : '');
     }
 
     // ── DAILY LOGISTICS ───────────────────────────────────────────────────
-    sectionHeader('DAILY LOGISTICS');
-    pairRow('Start of Day', sheet.startOfDay ?? '', 'End of Day', sheet.endOfDay ?? '');
-    pairRow('Breakfast', sheet.breakfastTime ?? '', 'Lunch', sheet.lunchTime ?? '');
-    pairRow('Dinner', sheet.dinnerTime ?? '', '', '');
+    sectionHdr('Daily Logistics');
+    const logLabels = ['Start of Day', 'Breakfast', 'Lunch', 'Dinner', 'End of Day'];
+    const logVals   = [sheet.startOfDay, sheet.breakfastTime, sheet.lunchTime, sheet.dinnerTime, sheet.endOfDay];
+    // Label row
+    const ll = ws.addRow(logLabels.concat(['']));
+    ll.height = 16;
+    for (let c = 1; c <= 6; c++) {
+      ll.getCell(c).fill = mkFill(CREAM);
+      ll.getCell(c).font = bodyFont(MID, 9);
+      ll.getCell(c).alignment = { horizontal: 'center', vertical: 'bottom' };
+    }
+    // Value row
+    const lv = ws.addRow(logVals.map((v) => v ?? '').concat(['']));
+    lv.height = 26;
+    for (let c = 1; c <= 6; c++) {
+      lv.getCell(c).fill = mkFill(OWHITE);
+      lv.getCell(c).font = bodyFont(DARK, 10, true);
+      lv.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
+      lv.getCell(c).border = tanBorder();
+    }
 
     // ── SHOT LIST ─────────────────────────────────────────────────────────
-    sectionHeader('SHOT LIST');
-    const sh = ws.addRow(['Shooting Location', 'Shot Description', 'Timing', 'Notes', 'Done']);
-    for (let c = 1; c <= 5; c++) {
-      sh.getCell(c).fill = fill('3C3C64');
-      sh.getCell(c).font = wfont(11);
-      sh.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
-    }
+    sectionHdr('Shot List');
+    const sh = ws.addRow(['#', 'Shooting Location', 'Description', 'Timing', 'Notes', '✓']);
     sh.height = 22;
+    for (let c = 1; c <= 6; c++) {
+      sh.getCell(c).fill = mkFill(DARK);
+      sh.getCell(c).font = wFont(10, true);
+      sh.getCell(c).alignment = { horizontal: c === 1 || c === 6 ? 'center' : 'left', vertical: 'middle' };
+    }
+
+    let prevLoc = '';
     sheet.shots.forEach((s, i) => {
-      const doneSymbol = s.status === 'DONE' ? '✓' : '☐';
-      const r = ws.addRow([s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', doneSymbol]);
-      const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
-      for (let c = 1; c <= 5; c++) {
-        r.getCell(c).fill = fill(bg);
-        r.getCell(c).font = bfont(11);
-        r.getCell(c).alignment = { wrapText: c === 4, horizontal: c === 5 ? 'center' : 'left', vertical: 'middle' };
+      const showLoc = !!s.shootingLocation && s.shootingLocation !== prevLoc;
+      if (s.shootingLocation) prevLoc = s.shootingLocation;
+      const bg   = i % 2 === 0 ? CREAM : OWHITE;
+      const done = s.status === 'DONE';
+      const sr   = ws.addRow([
+        i + 1,
+        showLoc ? (s.shootingLocation ?? '') : '',
+        s.description,
+        s.timing ?? '',
+        s.notes ?? '',
+        done ? '✓' : '☐',
+      ]);
+      sr.height = 22;
+      for (let c = 1; c <= 6; c++) {
+        sr.getCell(c).fill = mkFill(bg);
+        sr.getCell(c).border = tanBorder();
+        sr.getCell(c).alignment = {
+          horizontal: c === 1 || c === 6 ? 'center' : 'left',
+          vertical: 'middle',
+          wrapText: true,
+        };
       }
-      r.height = 20;
+      sr.getCell(1).font = bodyFont('999999', 9);
+      sr.getCell(2).font = bodyFont(DARK, 10);
+      sr.getCell(3).font = bodyFont(DARK, 10);
+      sr.getCell(4).font = bodyFont(DARK, 10);
+      sr.getCell(5).font = bodyFont(DARK, 10);
+      sr.getCell(6).font = bodyFont(done ? MID : TAN, 10, done);
     });
 
     const buf = await wb.xlsx.writeBuffer();
