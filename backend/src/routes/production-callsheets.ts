@@ -252,6 +252,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     include: { _count: { select: { shots: true } } },
   });
   console.log('[callsheets/list] results count:', sheets.length);
+  console.log('[callsheets/list] results:', sheets.map(s => ({ id: s.id, projectName: s.projectName, organisationId: s.organisationId, createdById: s.createdById })));
   res.json(sheets);
 });
 

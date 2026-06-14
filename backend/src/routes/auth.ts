@@ -77,6 +77,8 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
+  console.log('[login] email:', user.email, '| organisationId:', user.organisationId, '| userId:', user.id);
+
   const payload = buildPayload(user);
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
