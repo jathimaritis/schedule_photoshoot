@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "Shot" ADD COLUMN "notes" TEXT;
+ALTER TABLE "Shot" ADD COLUMN IF NOT EXISTS "notes" TEXT;
