@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, Trash2, Send, X, Calendar, ClipboardList, LayoutGrid, CheckCircle, Clock, AlertCircle, Link2 } from 'lucide-react';
+import { Shield, Trash2, Send, Calendar, ClipboardList, LayoutGrid, CheckCircle, Clock, AlertCircle, Link2 } from 'lucide-react';
 import { orgApi } from '../../api/org';
 import { authApi } from '../../api/auth';
 import { useAuthStore } from '../../stores/authStore';
@@ -209,11 +209,22 @@ function InvitesTab({ invites, isLoading, qc }: {
     onError: (e: unknown) => toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed'),
   });
 
-  const cancelMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: (id: string) => orgApi.cancelInvite(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['org-users'] }); toast.success('Invite cancelled'); },
-    onError: () => toast.error('Failed to cancel invite'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['org-users'] }); toast.success('Invitation deleted'); },
+    onError: () => toast.error('Failed to delete invitation'),
   });
+
+  const deleteExpiredMutation = useMutation({
+    mutationFn: () => orgApi.deleteExpiredInvites(),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['org-users'] });
+      toast.success(`Deleted ${data.count} invitation${data.count === 1 ? '' : 's'}`);
+    },
+    onError: () => toast.error('Failed to delete expired invitations'),
+  });
+
+  const expiredOrAccepted = invites.filter((i) => i.usedAt || isPast(new Date(i.expiresAt)));
 
   return (
     <div className="space-y-6">
@@ -278,6 +289,22 @@ function InvitesTab({ invites, isLoading, qc }: {
         <p className="text-sm text-gray-400 text-center py-6">No invites yet.</p>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {expiredOrAccepted.length > 0 && (
+            <div className="flex items-center justify-end px-4 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+              <button
+                onClick={() => {
+                  if (confirm(`Delete all ${expiredOrAccepted.length} expired and accepted invitation${expiredOrAccepted.length === 1 ? '' : 's'}?`)) {
+                    deleteExpiredMutation.mutate();
+                  }
+                }}
+                disabled={deleteExpiredMutation.isPending}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete All Expired ({expiredOrAccepted.length})
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">
@@ -316,15 +343,18 @@ function InvitesTab({ invites, isLoading, qc }: {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {status === 'pending' && <CopyLinkButton url={inviteUrl} />}
-                          {status === 'pending' && (
-                            <button
-                              onClick={() => cancelMutation.mutate(invite.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Cancel invite"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => {
+                              if (confirm('Are you sure you want to delete this invitation?')) {
+                                deleteMutation.mutate(invite.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                            title="Delete invitation"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>

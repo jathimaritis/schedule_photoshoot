@@ -173,7 +173,7 @@ router.post('/invite', authenticate, requireAdmin, validate(inviteSchema), async
 router.get('/invite/:token', async (req: Request, res: Response): Promise<void> => {
   const invite = await prisma.inviteToken.findUnique({ where: { token: req.params.token } });
   if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
-    res.status(400).json({ error: 'This invite link is invalid or has expired.' });
+    res.status(400).json({ error: 'This invitation is no longer valid.' });
     return;
   }
   res.json({ email: invite.email, moduleAccess: invite.moduleAccess });
@@ -187,7 +187,7 @@ router.post('/invite/:token', validate(acceptInviteSchema), async (req: Request,
 
   const invite = await prisma.inviteToken.findUnique({ where: { token } });
   if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
-    res.status(400).json({ error: 'This invite link is invalid or has expired.' });
+    res.status(400).json({ error: 'This invitation is no longer valid.' });
     return;
   }
 

@@ -117,14 +117,29 @@ router.delete('/users/:userId', requireAdmin, async (req: Request, res: Response
   res.json({ message: 'User deleted' });
 });
 
-// Cancel/revoke an invite
+// Delete a single invite (any status)
 router.delete('/invites/:inviteId', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const invite = await prisma.inviteToken.findFirst({
     where: { id: req.params.inviteId, organisationId: req.user!.organisationId },
   });
   if (!invite) { res.status(404).json({ error: 'Invite not found' }); return; }
   await prisma.inviteToken.delete({ where: { id: req.params.inviteId } });
-  res.json({ message: 'Invite cancelled' });
+  res.json({ message: 'Invite deleted' });
+});
+
+// Bulk-delete all expired or accepted invites for this org
+router.delete('/invites', requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const now = new Date();
+  const { count } = await prisma.inviteToken.deleteMany({
+    where: {
+      organisationId: req.user!.organisationId,
+      OR: [
+        { expiresAt: { lt: now } },
+        { usedAt: { not: null } },
+      ],
+    },
+  });
+  res.json({ message: `Deleted ${count} invitation(s)`, count });
 });
 
 export default router;

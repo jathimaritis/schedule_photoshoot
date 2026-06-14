@@ -14,6 +14,8 @@ export const orgApi = {
     api.delete(`/org/users/${userId}`).then((r) => r.data),
   cancelInvite: (inviteId: string) =>
     api.delete(`/org/invites/${inviteId}`).then((r) => r.data),
+  deleteExpiredInvites: () =>
+    api.delete('/org/invites').then((r) => r.data as { count: number }),
 };
 
 export const profileApi = {
