@@ -273,101 +273,152 @@ router.post('/:id/import-shots', upload.single('file'), async (req: Request, res
   res.json({ imported });
 });
 
-// Export Excel
+// Export Excel — single sheet
 router.get('/:id/export/excel', async (req: Request, res: Response): Promise<void> => {
   try {
     const sheet = await getSheet(req.params.id, req.user!.organisationId);
     if (!sheet) { res.status(404).json({ error: 'Not found' }); return; }
 
+    const contacts = (Array.isArray(sheet.contacts) ? sheet.contacts : []) as Array<{
+      title?: string; name?: string; phone?: string; email?: string;
+    }>;
+    const wd = sheet.weatherData as { description?: string; tempMax?: number; tempMin?: number; precipitation?: number; windSpeed?: number } | null;
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Photoshoot Scheduler';
     const NAVY = '1A1A2E';
-    const GOLD = 'D4AF37';
-    const LIGHT = 'F0F0F0';
+    const PURPLE = '2C2C54';
+    const LIGHT = 'F2F2F2';
+    const STRIPE = 'FAFAFA';
 
+    // Helpers
     const fill = (hex: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}` } });
-    const wfont = (size = 10): Partial<ExcelJS.Font> => ({ name: 'Calibri', size, color: { argb: 'FFFFFFFF' }, bold: true });
-    const bfont = (size = 10): Partial<ExcelJS.Font> => ({ name: 'Calibri', size, color: { argb: 'FF1A1A1A' } });
+    const wfont = (sz = 10): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FFFFFFFF' }, bold: true });
+    const bfont = (sz = 10, bold = false): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FF1A1A1A' }, bold });
 
-    const addHeaderRow = (ws: ExcelJS.Worksheet, label: string, colSpan: number) => {
-      const row = ws.addRow([label]);
-      ws.mergeCells(`A${row.number}:${String.fromCharCode(64 + colSpan)}${row.number}`);
-      row.getCell(1).fill = fill(NAVY);
-      row.getCell(1).font = wfont(12);
-      row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-      row.height = 24;
+    // Single worksheet, 5 columns: Label(A) | Value(B) | Label2(C) | Value2(D) | Status/Extra(E)
+    const ws = wb.addWorksheet('Call Sheet');
+    ws.columns = [{ width: 20 }, { width: 28 }, { width: 16 }, { width: 26 }, { width: 13 }];
+
+    // Fit to 1 page wide when printed
+    ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' };
+
+    // ── Title bar ──────────────────────────────────────────────────────────
+    const titleRow = ws.addRow([`${sheet.projectName} — PRODUCTION CALL SHEET`]);
+    ws.mergeCells(`A${titleRow.number}:E${titleRow.number}`);
+    titleRow.getCell(1).fill = fill(NAVY);
+    titleRow.getCell(1).font = wfont(13);
+    titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    titleRow.height = 28;
+    ws.addRow([]); // spacer
+
+    // ── Section header helper ──────────────────────────────────────────────
+    const sectionHeader = (label: string) => {
+      ws.addRow([]);
+      const r = ws.addRow([label]);
+      ws.mergeCells(`A${r.number}:E${r.number}`);
+      r.getCell(1).fill = fill(PURPLE);
+      r.getCell(1).font = wfont(10);
+      r.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      r.height = 20;
     };
 
-    // Sheet 1: Call Sheet Details
-    const ws1 = wb.addWorksheet('Production Details');
-    ws1.columns = [{ width: 22 }, { width: 30 }, { width: 22 }, { width: 30 }];
-    addHeaderRow(ws1, `${sheet.projectName} — PRODUCTION CALL SHEET`, 4);
-
-    const addDetailSection = (title: string, rows: [string, string | null | undefined][]) => {
-      const hRow = ws1.addRow([title]);
-      ws1.mergeCells(`A${hRow.number}:D${hRow.number}`);
-      hRow.getCell(1).fill = fill('2C2C54');
-      hRow.getCell(1).font = wfont(10);
-      hRow.height = 18;
-      for (let i = 0; i < rows.length; i += 2) {
-        const [l1, v1] = rows[i];
-        const [l2, v2] = rows[i + 1] ?? ['', ''];
-        const r = ws1.addRow([l1, v1 ?? '', l2, v2 ?? '']);
-        r.getCell(1).fill = fill(LIGHT); r.getCell(1).font = bfont(); (r.getCell(1).font as ExcelJS.Font).bold = true;
-        r.getCell(2).font = bfont();
-        r.getCell(3).fill = fill(LIGHT); r.getCell(3).font = bfont(); (r.getCell(3).font as ExcelJS.Font).bold = true;
-        r.getCell(4).font = bfont();
-        r.height = 18;
+    // ── Pair row helper (label1 | value1 | label2 | value2) ───────────────
+    const pairRow = (l1: string, v1: string, l2 = '', v2 = '', stripe = false) => {
+      const r = ws.addRow([l1, v1, l2, v2, '']);
+      r.getCell(1).fill = fill(LIGHT); r.getCell(1).font = bfont(9, true);
+      r.getCell(2).font = bfont(9); r.getCell(2).alignment = { wrapText: false };
+      if (l2) {
+        r.getCell(3).fill = fill(LIGHT); r.getCell(3).font = bfont(9, true);
+        r.getCell(4).font = bfont(9);
       }
-      ws1.addRow([]);
+      if (stripe) {
+        r.getCell(2).fill = fill(STRIPE);
+        r.getCell(4).fill = fill(STRIPE);
+        r.getCell(5).fill = fill(STRIPE);
+      }
+      r.height = 18;
+      return r;
     };
 
-    addDetailSection('PROJECT DETAILS', [
-      ['Client', sheet.client],
-      ['Project Name', sheet.projectName],
-      ['Location', sheet.location],
-      ['Shooting Date', sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : ''],
-      ['General Notes', sheet.generalNotes],
-    ]);
+    // ── PROJECT DETAILS ───────────────────────────────────────────────────
+    sectionHeader('PROJECT DETAILS');
+    pairRow('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
+    pairRow('Location', sheet.location ?? '', 'Shooting Date',
+      sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '');
 
-    addDetailSection('LIGHT & WEATHER TIMES', [
-      ['Sunrise', sheet.sunrise],
-      ['Sunset', sheet.sunset],
-      ['Golden Hour AM', sheet.goldenHourAm],
-      ['Golden Hour PM', sheet.goldenHourPm],
-      ['Blue Hour AM', sheet.blueHourAm],
-      ['Blue Hour PM', sheet.blueHourPm],
-    ]);
+    // General Notes — full-width, tall, wrapped
+    const notesRow = ws.addRow(['General Notes', sheet.generalNotes ?? '', '', '', '']);
+    ws.mergeCells(`B${notesRow.number}:E${notesRow.number}`);
+    notesRow.getCell(1).fill = fill(LIGHT); notesRow.getCell(1).font = bfont(9, true);
+    notesRow.getCell(1).alignment = { vertical: 'top' };
+    notesRow.getCell(2).font = bfont(9);
+    notesRow.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    notesRow.height = 60; // ~80px
 
-    addDetailSection('DAILY LOGISTICS', [
-      ['Start of Day', sheet.startOfDay],
-      ['Breakfast', sheet.breakfastTime],
-      ['Lunch', sheet.lunchTime],
-      ['Dinner', sheet.dinnerTime],
-      ['End of Day', sheet.endOfDay],
-    ]);
-
-    // Sheet 2: Shot List
-    const ws2 = wb.addWorksheet('Shot List');
-    ws2.columns = [{ width: 22 }, { width: 32 }, { width: 12 }, { width: 30 }, { width: 12 }];
-    addHeaderRow(ws2, 'SHOT LIST', 5);
-
-    const hdr = ws2.addRow(['Shooting Location', 'Shot Description', 'Timing', 'Notes', 'Status']);
-    hdr.height = 18;
-    for (let c = 1; c <= 5; c++) {
-      hdr.getCell(c).fill = fill('2C2C54');
-      hdr.getCell(c).font = wfont(9);
-      hdr.getCell(c).alignment = { horizontal: 'center' };
+    // ── CREW & CLIENT CONTACTS ────────────────────────────────────────────
+    sectionHeader('CREW & CLIENT CONTACTS');
+    if (contacts.length === 0) {
+      const er = ws.addRow(['No contacts added.', '', '', '', '']);
+      ws.mergeCells(`A${er.number}:E${er.number}`);
+      er.getCell(1).font = bfont(9); er.height = 16;
+    } else {
+      // Column header
+      const ch = ws.addRow(['Title', 'Name', 'Phone', 'Email', '']);
+      ws.mergeCells(`D${ch.number}:E${ch.number}`);
+      for (let c = 1; c <= 4; c++) {
+        ch.getCell(c).fill = fill('3C3C64');
+        ch.getCell(c).font = wfont(9);
+        ch.getCell(c).alignment = { horizontal: 'center' };
+      }
+      ch.height = 17;
+      contacts.forEach((ct, i) => {
+        const r = ws.addRow([ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? '', '']);
+        ws.mergeCells(`D${r.number}:E${r.number}`);
+        const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
+        for (let c = 1; c <= 4; c++) { r.getCell(c).fill = fill(bg); r.getCell(c).font = bfont(9); }
+        r.height = 16;
+      });
     }
 
+    // ── LIGHT TIMES & WEATHER ─────────────────────────────────────────────
+    sectionHeader('LIGHT TIMES & WEATHER');
+    pairRow('Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? '');
+    pairRow('Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? '');
+    pairRow('Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? '');
+    if (wd) {
+      const temp = wd.tempMin != null && wd.tempMax != null
+        ? `${wd.tempMin}° – ${wd.tempMax}°C`
+        : wd.tempMax != null ? `${wd.tempMax}°C` : '';
+      pairRow('Conditions', wd.description ?? '', 'Temperature', temp, true);
+      pairRow('Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '',
+        'Wind Speed', wd.windSpeed != null ? `${wd.windSpeed} km/h` : '');
+    }
+
+    // ── DAILY LOGISTICS ───────────────────────────────────────────────────
+    sectionHeader('DAILY LOGISTICS');
+    pairRow('Start of Day', sheet.startOfDay ?? '', 'End of Day', sheet.endOfDay ?? '');
+    pairRow('Breakfast', sheet.breakfastTime ?? '', 'Lunch', sheet.lunchTime ?? '');
+    pairRow('Dinner', sheet.dinnerTime ?? '', '', '');
+
+    // ── SHOT LIST ─────────────────────────────────────────────────────────
+    sectionHeader('SHOT LIST');
+    const sh = ws.addRow(['Shooting Location', 'Shot Description', 'Timing', 'Notes', 'Status']);
+    for (let c = 1; c <= 5; c++) {
+      sh.getCell(c).fill = fill('3C3C64');
+      sh.getCell(c).font = wfont(9);
+      sh.getCell(c).alignment = { horizontal: 'center' };
+    }
+    sh.height = 17;
     sheet.shots.forEach((s, i) => {
-      const r = ws2.addRow([s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status]);
-      r.height = 16;
-      const bg = i % 2 === 0 ? 'FFFFFF' : 'FAFAFA';
+      const r = ws.addRow([s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status]);
+      const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
       for (let c = 1; c <= 5; c++) {
         r.getCell(c).fill = fill(bg);
-        r.getCell(c).font = bfont();
+        r.getCell(c).font = bfont(9);
+        r.getCell(c).alignment = { wrapText: c === 4 }; // wrap notes column
       }
+      r.height = 16;
     });
 
     const buf = await wb.xlsx.writeBuffer();
@@ -387,6 +438,11 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
     const sheet = await getSheet(req.params.id, req.user!.organisationId);
     if (!sheet) { res.status(404).json({ error: 'Not found' }); return; }
 
+    const contacts = (Array.isArray(sheet.contacts) ? sheet.contacts : []) as Array<{
+      title?: string; name?: string; phone?: string; email?: string;
+    }>;
+    const wd = sheet.weatherData as { description?: string; tempMax?: number; tempMin?: number; precipitation?: number; windSpeed?: number } | null;
+
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${sheet.projectName.replace(/[^a-z0-9]/gi, '_')}_callsheet.pdf"`);
@@ -395,6 +451,7 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
     const NAVY_RGB = [26, 26, 46] as const;
     const GOLD_RGB = [212, 175, 55] as const;
     const GREY_RGB = [240, 240, 240] as const;
+    const PURPLE_RGB = [44, 44, 84] as const;
 
     const pageW = doc.page.width - 80;
 
@@ -405,29 +462,36 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
 
     let y = 80;
 
+    const checkPage = (needed = 24) => {
+      if (y + needed > doc.page.height - 50) { doc.addPage(); y = 40; }
+    };
+
     const section = (title: string) => {
-      doc.rect(40, y, pageW, 18).fill(`rgb(44,44,84)`);
+      checkPage(26);
+      doc.rect(40, y, pageW, 18).fill(`rgb(${PURPLE_RGB.join(',')})`);
       doc.fillColor('white').fontSize(9).font('Helvetica-Bold').text(title, 44, y + 4);
       y += 22;
     };
 
     const row2col = (l1: string, v1: string, l2: string, v2: string) => {
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-      doc.rect(40, y, pageW / 2, 16).fill(`rgb(${GREY_RGB.join(',')})`);
-      doc.rect(40 + pageW / 2, y, pageW / 2, 16).fill('white');
-      doc.fillColor('#333').fontSize(8).font('Helvetica-Bold').text(l1, 44, y + 3, { width: pageW / 4 });
-      doc.fillColor('#333').font('Helvetica').text(v1, 44 + pageW / 4, y + 3, { width: pageW / 4 - 4 });
-      doc.fillColor('#333').font('Helvetica-Bold').text(l2, 44 + pageW / 2, y + 3, { width: pageW / 4 });
-      doc.fillColor('#333').font('Helvetica').text(v2, 44 + pageW * 3 / 4, y + 3, { width: pageW / 4 - 4 });
+      checkPage();
+      const hw = pageW / 2;
+      doc.rect(40, y, hw, 16).fill(`rgb(${GREY_RGB.join(',')})`);
+      doc.rect(40 + hw, y, hw, 16).fill('white');
+      doc.fillColor('#222').fontSize(8).font('Helvetica-Bold').text(l1, 44, y + 3, { width: hw * 0.4 });
+      doc.fillColor('#333').font('Helvetica').text(v1, 44 + hw * 0.4, y + 3, { width: hw * 0.6 - 4 });
+      doc.fillColor('#222').font('Helvetica-Bold').text(l2, 44 + hw, y + 3, { width: hw * 0.4 });
+      doc.fillColor('#333').font('Helvetica').text(v2, 44 + hw + hw * 0.4, y + 3, { width: hw * 0.6 - 4 });
       y += 18;
     };
 
-    const row1col = (label: string, value: string) => {
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-      doc.rect(40, y, pageW, 16).fill(`rgb(${GREY_RGB.join(',')})`);
-      doc.fillColor('#333').fontSize(8).font('Helvetica-Bold').text(label, 44, y + 3, { width: pageW / 4 });
-      doc.fillColor('#333').font('Helvetica').text(value, 44 + pageW / 4, y + 3, { width: pageW * 3 / 4 - 4 });
-      y += 18;
+    const row1col = (label: string, value: string, tallH = 16) => {
+      checkPage(tallH + 2);
+      doc.rect(40, y, pageW, tallH).fill(`rgb(${GREY_RGB.join(',')})`);
+      doc.fillColor('#222').fontSize(8).font('Helvetica-Bold').text(label, 44, y + 3, { width: pageW * 0.22 });
+      doc.fillColor('#333').font('Helvetica').text(value, 44 + pageW * 0.22, y + 3,
+        { width: pageW * 0.78 - 4, lineBreak: tallH > 16, height: tallH - 6 });
+      y += tallH + 2;
     };
 
     // Project details
@@ -435,44 +499,79 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
     row2col('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
     row1col('Location', sheet.location ?? '');
     row2col('Shooting Date', sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '', '', '');
-    if (sheet.generalNotes) row1col('Notes', sheet.generalNotes);
-    y += 8;
+    if (sheet.generalNotes) row1col('General Notes', sheet.generalNotes, 48);
+    y += 6;
+
+    // Contacts
+    if (contacts.length > 0) {
+      section('CREW & CLIENT CONTACTS');
+      // Header
+      const cw = [pageW * 0.22, pageW * 0.24, pageW * 0.2, pageW * 0.34];
+      const cx = [40, 40 + cw[0], 40 + cw[0] + cw[1], 40 + cw[0] + cw[1] + cw[2]];
+      doc.rect(40, y, pageW, 15).fill(`rgb(${PURPLE_RGB.join(',')})`);
+      ['Title', 'Name', 'Phone', 'Email'].forEach((h, i) => {
+        doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold')
+          .text(h, cx[i] + 2, y + 3, { width: cw[i] - 4, align: 'left' });
+      });
+      y += 17;
+      contacts.forEach((ct, i) => {
+        checkPage();
+        doc.rect(40, y, pageW, 15).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
+        [ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? ''].forEach((v, j) => {
+          doc.fillColor('#333').fontSize(7.5).font('Helvetica')
+            .text(v, cx[j] + 2, y + 3, { width: cw[j] - 4, lineBreak: false });
+        });
+        y += 16;
+      });
+      y += 6;
+    }
 
     // Light & weather
-    section('LIGHT & WEATHER TIMES');
+    section('LIGHT TIMES & WEATHER');
     row2col('Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? '');
     row2col('Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? '');
     row2col('Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? '');
-    y += 8;
+    if (wd) {
+      const temp = wd.tempMin != null && wd.tempMax != null
+        ? `${wd.tempMin}° – ${wd.tempMax}°C`
+        : wd.tempMax != null ? `${wd.tempMax}°C` : '';
+      row2col('Conditions', wd.description ?? '', 'Temperature', temp);
+      row2col('Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '',
+        'Wind Speed', wd.windSpeed != null ? `${wd.windSpeed} km/h` : '');
+    }
+    y += 6;
 
     // Logistics
     section('DAILY LOGISTICS');
     row2col('Start of Day', sheet.startOfDay ?? '', 'End of Day', sheet.endOfDay ?? '');
     row2col('Breakfast', sheet.breakfastTime ?? '', 'Lunch', sheet.lunchTime ?? '');
-    row1col('Dinner', sheet.dinnerTime ?? '');
-    y += 8;
+    if (sheet.dinnerTime) row2col('Dinner', sheet.dinnerTime, '', '');
+    y += 6;
 
     // Shot list
     section('SHOT LIST');
-    // Header
-    const cols = [pageW * 0.2, pageW * 0.33, pageW * 0.1, pageW * 0.27, pageW * 0.1];
-    const colX = cols.reduce<number[]>((acc, w) => { acc.push((acc[acc.length - 1] ?? 40) + (acc.length > 0 ? cols[acc.length - 1] : 0)); return acc; }, [40]);
+    const cols = [pageW * 0.19, pageW * 0.31, pageW * 0.1, pageW * 0.28, pageW * 0.12];
+    const colX = cols.reduce<number[]>((acc, _, i) => {
+      acc.push(i === 0 ? 40 : acc[i - 1] + cols[i - 1]);
+      return acc;
+    }, []);
     const hdrs = ['Shooting Location', 'Description', 'Timing', 'Notes', 'Status'];
-    doc.rect(40, y, pageW, 16).fill(`rgb(44,44,84)`);
+    checkPage();
+    doc.rect(40, y, pageW, 16).fill(`rgb(${PURPLE_RGB.join(',')})`);
     hdrs.forEach((h, i) => {
-      doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold').text(h, colX[i] + 2, y + 4, { width: cols[i] - 4, align: 'center' });
+      doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold')
+        .text(h, colX[i] + 2, y + 4, { width: cols[i] - 4, align: 'center' });
     });
     y += 18;
 
     sheet.shots.forEach((s, i) => {
-      const rowH = 16;
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-      doc.rect(40, y, pageW, rowH).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
-      const vals = [s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status];
-      vals.forEach((v, j) => {
-        doc.fillColor('#333').fontSize(7.5).font('Helvetica').text(v, colX[j] + 2, y + 4, { width: cols[j] - 4, lineBreak: false });
+      checkPage(18);
+      doc.rect(40, y, pageW, 16).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
+      [s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status].forEach((v, j) => {
+        doc.fillColor('#333').fontSize(7.5).font('Helvetica')
+          .text(v, colX[j] + 2, y + 4, { width: cols[j] - 4, lineBreak: false });
       });
-      y += rowH;
+      y += 16;
     });
 
     doc.end();
