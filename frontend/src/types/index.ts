@@ -1,4 +1,5 @@
 export type Role = 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER';
+export type ModuleAccess = 'NONE' | 'SCHEDULER' | 'CALL_SHEET' | 'BOTH';
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ShotStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE';
 export type FieldGroup = 'CREW' | 'CLIENT' | 'LOGISTICS';
@@ -26,12 +27,49 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  moduleAccess: ModuleAccess;
   avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
   lastLoginAt?: string | null;
   organisationId: string;
   organisation?: Organisation;
+}
+
+export interface ProductionCallSheet {
+  id: string;
+  projectName: string;
+  client?: string | null;
+  location?: string | null;
+  shootingDate?: string | null;
+  generalNotes?: string | null;
+  sunrise?: string | null;
+  sunset?: string | null;
+  goldenHourAm?: string | null;
+  goldenHourPm?: string | null;
+  blueHourAm?: string | null;
+  blueHourPm?: string | null;
+  startOfDay?: string | null;
+  breakfastTime?: string | null;
+  lunchTime?: string | null;
+  dinnerTime?: string | null;
+  endOfDay?: string | null;
+  organisationId: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  shots: ProductionShot[];
+}
+
+export interface ProductionShot {
+  id: string;
+  shootingLocation?: string | null;
+  description: string;
+  timing?: string | null;
+  notes?: string | null;
+  status: ShotStatus;
+  sortOrder: number;
+  callSheetId: string;
 }
 
 export interface InviteToken {
