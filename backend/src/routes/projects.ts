@@ -29,6 +29,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   const { status } = req.query;
   const where: Record<string, unknown> = { ...orgScope(req) };
   if (status) where.status = status as ProjectStatus;
+  if (req.user!.role === 'MEMBER') where.createdById = req.user!.userId;
 
   const projects = await prisma.project.findMany({
     where,

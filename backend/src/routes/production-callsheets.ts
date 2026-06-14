@@ -242,17 +242,14 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
 
 // List
 router.get('/', async (req: Request, res: Response): Promise<void> => {
-  const whereClause = { organisationId: req.user!.organisationId };
-  console.log('[callsheets/list] user.email:', req.user!.email);
-  console.log('[callsheets/list] user.organisationId:', req.user!.organisationId);
-  console.log('[callsheets/list] where clause:', JSON.stringify(whereClause));
   const sheets = await prisma.productionCallSheet.findMany({
-    where: whereClause,
+    where: {
+      organisationId: req.user!.organisationId,
+      ...(req.user!.role === 'MEMBER' ? { createdById: req.user!.userId } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     include: { _count: { select: { shots: true } } },
   });
-  console.log('[callsheets/list] results count:', sheets.length);
-  console.log('[callsheets/list] results:', sheets.map(s => ({ id: s.id, projectName: s.projectName, organisationId: s.organisationId, createdById: s.createdById })));
   res.json(sheets);
 });
 
