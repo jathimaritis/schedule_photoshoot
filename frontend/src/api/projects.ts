@@ -1,5 +1,5 @@
 import api from './client';
-import { Project, PhotographyType, ShootingDay, ShotSection, CallSheet, CallSheetField } from '../types';
+import { Project, PhotographyType, ShootingDay, ShotSection, CallSheet, CallSheetField, WeatherData } from '../types';
 
 export const projectsApi = {
   list: (status?: string) =>
@@ -93,7 +93,14 @@ export const projectsApi = {
     api.post(`/projects/${id}/callsheets/generate`).then((r) => r.data),
   getCallSheet: (id: string, dayId: string) =>
     api.get<CallSheet>(`/projects/${id}/callsheets/${dayId}`).then((r) => r.data),
-  updateCallSheet: (id: string, dayId: string, data: { notes?: string; isLocked?: boolean }) =>
+  updateCallSheet: (id: string, dayId: string, data: {
+    notes?: string | null; isLocked?: boolean;
+    location?: string | null; locationLat?: number | null; locationLng?: number | null;
+    sunrise?: string | null; sunset?: string | null;
+    goldenHourAm?: string | null; goldenHourPm?: string | null;
+    blueHourAm?: string | null; blueHourPm?: string | null;
+    weatherData?: WeatherData | null;
+  }) =>
     api.put<CallSheet>(`/projects/${id}/callsheets/${dayId}`, data).then((r) => r.data),
   updateCallSheetFields: (id: string, dayId: string, fields: Partial<CallSheetField>[]) =>
     api.put(`/projects/${id}/callsheets/${dayId}/fields`, { fields }).then((r) => r.data),

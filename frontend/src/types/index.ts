@@ -204,6 +204,16 @@ export interface CallSheet {
   id: string;
   notes?: string | null;
   isLocked: boolean;
+  location?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  sunrise?: string | null;
+  sunset?: string | null;
+  goldenHourAm?: string | null;
+  goldenHourPm?: string | null;
+  blueHourAm?: string | null;
+  blueHourPm?: string | null;
+  weatherData?: WeatherData | null;
   shootingDayId: string;
   projectId: string;
   createdAt: string;
