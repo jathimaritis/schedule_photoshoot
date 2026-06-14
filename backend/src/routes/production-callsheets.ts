@@ -135,39 +135,83 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Convert UTC ISO string from sunrise-sunset.org to local HH:mm using offset from Open-Meteo
+  // Convert UTC ISO string from sunrise-sunset.org to local HH:mm using a UTC offset in seconds
   function utcIsoToLocal(isoUtc: string, offsetSeconds: number): string {
     const ms = new Date(isoUtc).getTime() + offsetSeconds * 1000;
     const d = new Date(ms);
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
   }
 
-  // Call Open-Meteo (weather + timezone + sun times as fallback) and sunrise-sunset.org in parallel
-  const meteoUrl = [
-    'https://api.open-meteo.com/v1/forecast',
-    `?latitude=${latitude}&longitude=${longitude}`,
-    `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
-    `&timezone=auto&start_date=${date}&end_date=${date}`,
-  ].join('');
+  // ── Choose the right weather API based on how far the date is from today ──
+  //
+  //   Past            → Open-Meteo Archive API  (historical actuals)
+  //   0–16 days ahead → Open-Meteo Forecast API (standard 16-day forecast)
+  //   > 16 days ahead → Open-Meteo Climate API  (ensemble projections)
+  //
+  // Sun times always come from sunrise-sunset.org regardless of which
+  // weather API is used, because sunrise-sunset.org works for any date.
+
+  type OpenMeteoResponse = {
+    utc_offset_seconds?: number;
+    daily?: {
+      sunrise?: string[];
+      sunset?: string[];
+      weathercode?: number[];
+      precipitation_sum?: number[];
+      windspeed_10m_max?: number[];
+      windspeed_10m_mean?: number[];
+      temperature_2m_max?: number[];
+      temperature_2m_min?: number[];
+    };
+  };
+
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  const targetMs = new Date(date).setHours(0, 0, 0, 0);
+  const diffDays = Math.round((targetMs - todayMs) / 86400000);
+
+  let weatherUrl: string;
+  let weatherApiName: string;
+
+  if (diffDays < 0) {
+    weatherApiName = 'archive';
+    weatherUrl = [
+      'https://archive-api.open-meteo.com/v1/archive',
+      `?latitude=${latitude}&longitude=${longitude}`,
+      `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max`,
+      `&timezone=auto&start_date=${date}&end_date=${date}`,
+    ].join('');
+  } else if (diffDays <= 16) {
+    weatherApiName = 'forecast';
+    weatherUrl = [
+      'https://api.open-meteo.com/v1/forecast',
+      `?latitude=${latitude}&longitude=${longitude}`,
+      `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
+      `&timezone=auto&start_date=${date}&end_date=${date}`,
+    ].join('');
+  } else {
+    weatherApiName = 'climate';
+    weatherUrl = [
+      'https://climate-api.open-meteo.com/v1/climate',
+      `?latitude=${latitude}&longitude=${longitude}`,
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_mean`,
+      `&models=EC_Earth3P_HR&timezone=auto`,
+      `&start_date=${date}&end_date=${date}`,
+    ].join('');
+  }
+
   const sunApiUrl = `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&date=${date}&formatted=0`;
 
-  console.log('[sun-times] fetching Open-Meteo:', meteoUrl);
-  console.log('[sun-times] fetching sunrise-sunset.org:', sunApiUrl);
+  console.log(`[sun-times] date is ${diffDays} days from today → using ${weatherApiName} API`);
+  console.log('[sun-times] weather URL:', weatherUrl);
+  console.log('[sun-times] sun URL:', sunApiUrl);
 
-  const [meteoSettled, sunSettled] = await Promise.allSettled([
-    fetch(meteoUrl).then(async (r) => {
-      if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
-      return r.json() as Promise<{
-        utc_offset_seconds?: number;
-        daily?: {
-          sunrise?: string[]; sunset?: string[];
-          weathercode?: number[];
-          precipitation_sum?: number[];
-          windspeed_10m_max?: number[];
-          temperature_2m_max?: number[];
-          temperature_2m_min?: number[];
-        };
-      }>;
+  const [weatherSettled, sunSettled] = await Promise.allSettled([
+    fetch(weatherUrl).then(async (r) => {
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`Open-Meteo ${weatherApiName} HTTP ${r.status}: ${body.slice(0, 120)}`);
+      }
+      return r.json() as Promise<OpenMeteoResponse>;
     }),
     fetch(sunApiUrl).then(async (r) => {
       if (!r.ok) throw new Error(`sunrise-sunset.org HTTP ${r.status}`);
@@ -178,19 +222,18 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
     }),
   ]);
 
-  if (meteoSettled.status === 'rejected') console.warn('[sun-times] Open-Meteo failed:', meteoSettled.reason);
+  if (weatherSettled.status === 'rejected') console.warn(`[sun-times] ${weatherApiName} API failed:`, weatherSettled.reason);
   if (sunSettled.status === 'rejected') console.warn('[sun-times] sunrise-sunset.org failed:', sunSettled.reason);
 
-  if (meteoSettled.status === 'rejected' && sunSettled.status === 'rejected') {
-    res.status(502).json({ error: 'Both sun-time and weather APIs failed. Enter times manually.' });
-    return;
-  }
-
-  const meteo = meteoSettled.status === 'fulfilled' ? meteoSettled.value : null;
+  const meteo = weatherSettled.status === 'fulfilled' ? weatherSettled.value : null;
   const sunApi = sunSettled.status === 'fulfilled' && sunSettled.value.status === 'OK' ? sunSettled.value : null;
-  const utcOffset = meteo?.utc_offset_seconds ?? null;
 
-  // Determine sunrise/sunset: prefer sunrise-sunset.org (more accurate) if we have the UTC offset to convert
+  // UTC offset for local-time conversion.
+  // Primary: from the weather API response (most accurate, handles DST).
+  // Fallback: rough longitude approximation (±30 min) if weather API failed.
+  const utcOffset = meteo?.utc_offset_seconds ?? Math.round(longitude / 15) * 3600;
+
+  // ── Sun times — always from sunrise-sunset.org ───────────────────────────
   let sunriseTime: string | null = null;
   let sunsetTime: string | null = null;
   let goldenHourAmTime: string | null = null;
@@ -198,29 +241,33 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
   let blueHourAmTime: string | null = null;
   let blueHourPmTime: string | null = null;
 
-  if (sunApi?.results && utcOffset != null) {
-    sunriseTime = utcIsoToLocal(sunApi.results.sunrise, utcOffset);
-    sunsetTime  = utcIsoToLocal(sunApi.results.sunset, utcOffset);
-    // Civil twilight begin = golden hour start AM; civil twilight end = golden hour end PM
+  if (sunApi?.results) {
+    // Convert UTC ISO strings to local time using the offset
+    sunriseTime      = utcIsoToLocal(sunApi.results.sunrise, utcOffset);
+    sunsetTime       = utcIsoToLocal(sunApi.results.sunset, utcOffset);
     goldenHourAmTime = utcIsoToLocal(sunApi.results.civil_twilight_begin, utcOffset);
     goldenHourPmTime = utcIsoToLocal(sunApi.results.civil_twilight_end, utcOffset);
-    blueHourAmTime   = sunriseTime ? shiftTime(sunriseTime, -40) : null;
+    blueHourAmTime   = shiftTime(sunriseTime, -40);
     blueHourPmTime   = sunsetTime;
-    console.log('[sun-times] using sunrise-sunset.org:', sunriseTime, sunsetTime);
-  } else {
-    // Fall back to Open-Meteo sun times
-    const sunriseIso = meteo?.daily?.sunrise?.[0];
-    const sunsetIso  = meteo?.daily?.sunset?.[0];
-    sunriseTime = sunriseIso ? parseIsoTime(sunriseIso) : null;
-    sunsetTime  = sunsetIso  ? parseIsoTime(sunsetIso)  : null;
+    const src = meteo?.utc_offset_seconds != null ? 'Open-Meteo offset' : 'longitude approximation';
+    console.log(`[sun-times] sun times from sunrise-sunset.org (offset via ${src}):`, sunriseTime, '→', sunsetTime);
+  } else if (meteo?.daily?.sunrise?.[0]) {
+    // Last resort: use Open-Meteo's own sunrise/sunset (only present in forecast/archive responses)
+    sunriseTime      = parseIsoTime(meteo.daily.sunrise[0]);
+    sunsetTime       = meteo.daily.sunset?.[0] ? parseIsoTime(meteo.daily.sunset[0]) : null;
     goldenHourAmTime = sunriseTime;
     goldenHourPmTime = sunsetTime ? shiftTime(sunsetTime, -60) : null;
     blueHourAmTime   = sunriseTime ? shiftTime(sunriseTime, -40) : null;
     blueHourPmTime   = sunsetTime;
-    console.log('[sun-times] using Open-Meteo sun times:', sunriseTime, sunsetTime);
+    console.log('[sun-times] sun times from Open-Meteo fallback:', sunriseTime, '→', sunsetTime);
+  } else {
+    console.warn('[sun-times] no sun time data available from any source');
   }
 
-  const wCode = meteo?.daily?.weathercode?.[0];
+  // ── Weather — null fields if unavailable for this date range ─────────────
+  const wCode    = meteo?.daily?.weathercode?.[0];
+  const windRaw  = meteo?.daily?.windspeed_10m_max?.[0] ?? meteo?.daily?.windspeed_10m_mean?.[0];
+
   const result = {
     sunrise:      sunriseTime,
     sunset:       sunsetTime,
@@ -230,10 +277,10 @@ router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
     blueHourPm:   blueHourPmTime,
     weather: {
       description:   wCode !== undefined ? (WMO[wCode] ?? `Code ${wCode}`) : null,
-      tempMax:       meteo?.daily?.temperature_2m_max?.[0] != null ? Math.round(meteo.daily.temperature_2m_max[0]!) : null,
-      tempMin:       meteo?.daily?.temperature_2m_min?.[0] != null ? Math.round(meteo.daily.temperature_2m_min[0]!) : null,
-      precipitation: meteo?.daily?.precipitation_sum?.[0] ?? null,
-      windSpeed:     meteo?.daily?.windspeed_10m_max?.[0] != null ? Math.round(meteo.daily.windspeed_10m_max[0]!) : null,
+      tempMax:       meteo?.daily?.temperature_2m_max?.[0]  != null ? Math.round(meteo!.daily!.temperature_2m_max![0]!)  : null,
+      tempMin:       meteo?.daily?.temperature_2m_min?.[0]  != null ? Math.round(meteo!.daily!.temperature_2m_min![0]!)  : null,
+      precipitation: meteo?.daily?.precipitation_sum?.[0]   ?? null,
+      windSpeed:     windRaw != null ? Math.round(windRaw) : null,
     },
   };
   console.log('[sun-times] result:', JSON.stringify(result).slice(0, 400));
