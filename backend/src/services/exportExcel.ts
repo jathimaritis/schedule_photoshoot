@@ -470,7 +470,11 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   // ── Light Times & Weather ─────────────────────────────────────────────────
 
   const hasSunTimes = cs.sunrise || cs.sunset || cs.goldenHourAm || cs.goldenHourPm || cs.blueHourAm || cs.blueHourPm;
-  const hasWeather  = cs.weatherData && (cs.weatherData.description || cs.weatherData.tempMax != null);
+
+  // weatherData is a Prisma JSON column — cast to a plain record for safe access
+  const w = cs.weatherData as Record<string, unknown> | null | undefined;
+  console.log('[export] raw weatherData:', JSON.stringify(cs.weatherData));
+  const hasWeather = !!w && Object.values(w).some((v) => v != null);
 
   if (hasSunTimes || hasWeather) {
     // Section header
@@ -484,50 +488,56 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     rowIdx++;
 
     if (hasSunTimes) {
-      // Two rows: sunrise/sunset/golden AM  and  golden PM/blue AM/blue PM
       const times1 = ws.addRow([
         'Sunrise', cs.sunrise ?? '—', 'Sunset', cs.sunset ?? '—', 'Golden Hour AM', cs.goldenHourAm ?? '—',
       ]);
       times1.height = 20;
-      (['Sunrise', 'Sunset', 'Golden Hour AM'] as const).forEach((_, ci) => {
-        const labelCol = ci * 2 + 1;
-        const valCol = ci * 2 + 2;
-        times1.getCell(labelCol).fill = fill(BRAND_CREAM);
-        times1.getCell(labelCol).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        times1.getCell(valCol).fill = fill(BRAND_WHITE);
-        times1.getCell(valCol).font = font();
-        times1.getCell(valCol).alignment = { horizontal: 'center' };
-      });
+      for (let ci = 0; ci < 3; ci++) {
+        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+        times1.getCell(lc).fill = fill(BRAND_CREAM);
+        times1.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        times1.getCell(vc).fill = fill(BRAND_WHITE);
+        times1.getCell(vc).font = font();
+        times1.getCell(vc).alignment = { horizontal: 'center' };
+      }
       rowIdx++;
 
       const times2 = ws.addRow([
         'Golden Hour PM', cs.goldenHourPm ?? '—', 'Blue Hour AM', cs.blueHourAm ?? '—', 'Blue Hour PM', cs.blueHourPm ?? '—',
       ]);
       times2.height = 20;
-      (['Golden Hour PM', 'Blue Hour AM', 'Blue Hour PM'] as const).forEach((_, ci) => {
-        const labelCol = ci * 2 + 1;
-        const valCol = ci * 2 + 2;
-        times2.getCell(labelCol).fill = fill(BRAND_CREAM);
-        times2.getCell(labelCol).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        times2.getCell(valCol).fill = fill(BRAND_WHITE);
-        times2.getCell(valCol).font = font();
-        times2.getCell(valCol).alignment = { horizontal: 'center' };
-      });
+      for (let ci = 0; ci < 3; ci++) {
+        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+        times2.getCell(lc).fill = fill(BRAND_CREAM);
+        times2.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        times2.getCell(vc).fill = fill(BRAND_WHITE);
+        times2.getCell(vc).font = font();
+        times2.getCell(vc).alignment = { horizontal: 'center' };
+      }
       rowIdx++;
     }
 
     if (hasWeather) {
-      const w = cs.weatherData!;
+      const desc       = (w!.description ?? w!.conditions) as string | null | undefined;
+      const tempMax    = w!.tempMax    as number | null | undefined;
+      const tempMin    = w!.tempMin    as number | null | undefined;
+      const precip     = w!.precipitation as number | null | undefined;
+      const windSpeed  = w!.windSpeed  as number | null | undefined;
+
       const tempStr = [
-        w.tempMin != null ? `${w.tempMin}°` : null,
-        w.tempMax != null ? `${w.tempMax}°C` : null,
+        tempMin != null ? `${tempMin}°` : null,
+        tempMax != null ? `${tempMax}°C` : null,
       ].filter(Boolean).join(' – ') || '—';
 
+      const precipWindStr = [
+        precip    != null ? `${precip} mm` : null,
+        windSpeed != null ? `${windSpeed} km/h` : null,
+      ].filter(Boolean).join('  /  ') || '—';
+
       const wRow = ws.addRow([
-        'Conditions', w.description ?? '—',
-        'Temp', tempStr,
-        w.precipitation != null ? 'Precipitation' : 'Wind',
-        w.precipitation != null ? `${w.precipitation} mm` : w.windSpeed != null ? `${w.windSpeed} km/h` : '—',
+        'Conditions', desc ?? '—',
+        'Temp',       tempStr,
+        'Precip / Wind', precipWindStr,
       ]);
       wRow.height = 20;
       for (let ci = 0; ci < 3; ci++) {
@@ -551,65 +561,54 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   rowIdx++;
 
   // ── Shot list header ──────────────────────────────────────────────────────
+  // Use explicit cell assignment (not addRow values) to prevent prior A:F merges
+  // from collapsing the header cells in Excel.
 
-  const shotHdr = ws.addRow(['#', 'Shot / Description', 'Location', 'Timing', 'Notes', 'Status']);
-  shotHdr.height = 20;
-  for (let c = 1; c <= 6; c++) {
-    shotHdr.getCell(c).fill = fill(BRAND_DARK);
-    shotHdr.getCell(c).font = wfont({ bold: true, size: 10 });
-    shotHdr.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
+  const shotHdrRow = ws.addRow([null, null, null, null, null, null]);
+  shotHdrRow.height = 22;
+  const shotHdrLabels = ['#', 'Shot / Description', 'Location', 'Timing', 'Notes', 'Status'];
+  for (let i = 0; i < shotHdrLabels.length; i++) {
+    const cell = shotHdrRow.getCell(i + 1);
+    cell.value = shotHdrLabels[i];
+    cell.fill = fill(BRAND_DARK);
+    cell.font = wfont({ bold: true, size: 10 });
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
   }
   rowIdx++;
 
-  // ── Shots grouped by location ─────────────────────────────────────────────
+  // ── Shot list — flat, one row per shot ───────────────────────────────────
 
-  const shotsByLoc = new Map<string, { locName: string; shots: typeof cs.shots }>();
-  for (const s of cs.shots.sort((a, b) => a.sortOrder - b.sortOrder)) {
-    const locName = s.shot.location?.name ?? 'Unknown';
-    if (!shotsByLoc.has(locName)) shotsByLoc.set(locName, { locName, shots: [] });
-    shotsByLoc.get(locName)!.shots.push(s);
-  }
+  const sortedShots = [...cs.shots].sort((a, b) => a.sortOrder - b.sortOrder);
+  let shotNum = 0;
 
-  let globalShotNum = 1;
+  for (const cs_shot of sortedShots) {
+    const desc = cs_shot.shot.description;
+    // Skip rows with no meaningful description (null, empty, or 'None' from import)
+    if (!desc || desc.trim() === '' || desc.trim().toLowerCase() === 'none') continue;
 
-  for (const { locName, shots } of shotsByLoc.values()) {
-    // Location group header — #7A5C3A bold uppercase, #B89A7A bottom border
-    const locRow = ws.addRow([locName.toUpperCase(), null, null, null, null, null]);
-    mergeRow(rowIdx);
-    locRow.height = 20;
-    locRow.getCell(1).fill = fill(BRAND_CREAM);
-    locRow.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-    locRow.getCell(1).alignment = { indent: 1 };
-    locRow.getCell(1).border = { bottom: { style: 'medium', color: { argb: `FF${BRAND_TAN}` } } };
-    rowIdx++;
+    const bg = shotNum % 2 === 0 ? BRAND_WHITE : BRAND_CREAM;
+    const status = cs_shot.statusOverride ?? cs_shot.shot.status;
+    const statusChar = status === 'DONE' ? '✓' : '☐';
 
-    let si = 0;
-    for (const cs_shot of shots) {
-      const bg = si % 2 === 0 ? BRAND_WHITE : BRAND_CREAM;
-      const status = cs_shot.statusOverride ?? cs_shot.shot.status;
-      const statusChar = status === 'DONE' ? '✓' : '☐';
-
-      const shotRow = ws.addRow([
-        globalShotNum,
-        cs_shot.shot.description,
-        cs_shot.shot.location?.name ?? '',
-        cs_shot.shot.timing ?? '',
-        cs_shot.shot.notes ?? '',
-        statusChar,
-      ]);
-      shotRow.height = 20;
-      for (let c = 1; c <= 6; c++) {
-        shotRow.getCell(c).fill = fill(bg);
-        shotRow.getCell(c).font = font({ size: 10 });
-        shotRow.getCell(c).border = thinBorder();
-        shotRow.getCell(c).alignment = { wrapText: true, vertical: 'top' };
-      }
-      shotRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
-      shotRow.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
-      si++;
-      globalShotNum++;
-      rowIdx++;
+    const shotRow = ws.addRow([
+      shotNum + 1,
+      desc,
+      cs_shot.shot.location?.name ?? '',
+      cs_shot.shot.timing ?? '',
+      cs_shot.shot.notes ?? '',
+      statusChar,
+    ]);
+    shotRow.height = 20;
+    for (let c = 1; c <= 6; c++) {
+      shotRow.getCell(c).fill = fill(bg);
+      shotRow.getCell(c).font = font({ size: 10 });
+      shotRow.getCell(c).border = thinBorder();
+      shotRow.getCell(c).alignment = { wrapText: true, vertical: 'top' };
     }
+    shotRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+    shotRow.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
+    shotNum++;
+    rowIdx++;
   }
 
   // ── Footer ────────────────────────────────────────────────────────────────
