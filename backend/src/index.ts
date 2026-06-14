@@ -52,7 +52,6 @@ app.use('/api/production-callsheets', productionCallSheetsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// Serve frontend static build in production
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '../../frontend/dist');
   app.use(express.static(frontendPath));
@@ -64,60 +63,30 @@ if (process.env.NODE_ENV === 'production') {
 app.use(notFound);
 app.use(errorHandler);
 
-async function applySchemaPatches() {
-  const patches: [string, string][] = [
-    ['ShootingDay.headerColour', `ALTER TABLE "ShootingDay" ADD COLUMN IF NOT EXISTS "headerColour" TEXT`],
-    ['Shot.notes', `ALTER TABLE "Shot" ADD COLUMN IF NOT EXISTS "notes" TEXT`],
-    ['ModuleAccess enum', `DO $$ BEGIN CREATE TYPE "ModuleAccess" AS ENUM ('NONE','SCHEDULER','CALL_SHEET','BOTH'); EXCEPTION WHEN duplicate_object THEN null; END $$`],
-    ['User.moduleAccess', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "moduleAccess" "ModuleAccess" NOT NULL DEFAULT 'NONE'`],
-    ['User.moduleAccess owners', `UPDATE "User" SET "moduleAccess" = 'BOTH' WHERE "role" IN ('OWNER','ADMIN') AND "moduleAccess" = 'NONE'`],
-    ['ProductionCallSheet table', `CREATE TABLE IF NOT EXISTS "ProductionCallSheet" ("id" TEXT NOT NULL,"projectName" TEXT NOT NULL,"client" TEXT,"location" TEXT,"shootingDate" TIMESTAMP(3),"generalNotes" TEXT,"sunrise" TEXT,"sunset" TEXT,"goldenHourAm" TEXT,"goldenHourPm" TEXT,"blueHourAm" TEXT,"blueHourPm" TEXT,"startOfDay" TEXT,"breakfastTime" TEXT,"lunchTime" TEXT,"dinnerTime" TEXT,"endOfDay" TEXT,"organisationId" TEXT NOT NULL,"createdById" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "ProductionCallSheet_pkey" PRIMARY KEY ("id"))`],
-    ['ProductionShot table', `CREATE TABLE IF NOT EXISTS "ProductionShot" ("id" TEXT NOT NULL,"shootingLocation" TEXT,"description" TEXT NOT NULL,"timing" TEXT,"notes" TEXT,"status" "ShotStatus" NOT NULL DEFAULT 'PENDING',"sortOrder" INTEGER NOT NULL DEFAULT 0,"callSheetId" TEXT NOT NULL,CONSTRAINT "ProductionShot_pkey" PRIMARY KEY ("id"))`],
-    ['ProductionCallSheet org fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_organisationId_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_organisationId_fkey" FOREIGN KEY ("organisationId") REFERENCES "Organisation"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
-    ['ProductionCallSheet user fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_createdById_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
-    ['ProductionShot cs fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionShot_callSheetId_fkey') THEN ALTER TABLE "ProductionShot" ADD CONSTRAINT "ProductionShot_callSheetId_fkey" FOREIGN KEY ("callSheetId") REFERENCES "ProductionCallSheet"("id") ON DELETE CASCADE ON UPDATE CASCADE; END IF; END $$`],
-    ['ProductionCallSheet.contacts', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "contacts" JSONB NOT NULL DEFAULT '[]'`],
-    ['ProductionCallSheet.weatherData', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "weatherData" JSONB`],
-    ['ProductionCallSheet.locationLat', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLat" DOUBLE PRECISION`],
-    ['ProductionCallSheet.locationLng', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLng" DOUBLE PRECISION`],
-    // User status + access flags
-    ['UserStatus enum', `DO $$ BEGIN CREATE TYPE "UserStatus" AS ENUM ('PENDING','APPROVED','RESTRICTED'); EXCEPTION WHEN duplicate_object THEN null; END $$`],
-    ['User.status', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "status" "UserStatus" NOT NULL DEFAULT 'PENDING'`],
-    ['User.accessScheduler', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessScheduler" BOOLEAN NOT NULL DEFAULT false`],
-    ['User.accessCallSheet', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accessCallSheet" BOOLEAN NOT NULL DEFAULT false`],
-    ['User.isAdmin', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isAdmin" BOOLEAN NOT NULL DEFAULT false`],
-    // Migrate existing approved users
-    [`User.status approved existing`, `UPDATE "User" SET "status" = 'APPROVED' WHERE ("role"::text IN ('OWNER','ADMIN') OR "moduleAccess"::text != 'NONE') AND "status"::text = 'PENDING'`],
-    [`User.accessScheduler existing`, `UPDATE "User" SET "accessScheduler" = true WHERE "moduleAccess"::text IN ('SCHEDULER','BOTH') OR "role"::text IN ('OWNER','ADMIN')`],
-    [`User.accessCallSheet existing`, `UPDATE "User" SET "accessCallSheet" = true WHERE "moduleAccess"::text IN ('CALL_SHEET','BOTH') OR "role"::text IN ('OWNER','ADMIN')`],
-    [`User.isAdmin existing owners`, `UPDATE "User" SET "isAdmin" = true WHERE "role"::text = 'OWNER'`],
-  ];
-
-  for (const [name, sql] of patches) {
-    await prisma.$executeRawUnsafe(sql).catch((e: Error) =>
-      console.warn(`Schema patch [${name}] skipped:`, e.message)
-    );
-  }
-}
-
-async function applyAdminEmail() {
+async function ensureAdminEmail() {
   const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
-  if (!adminEmail) return;
+  if (!adminEmail) {
+    console.warn('[startup] ADMIN_EMAIL is not set — no admin account will be promoted automatically');
+    return;
+  }
   try {
-    const result = await prisma.$executeRawUnsafe(
-      `UPDATE "User" SET "isAdmin" = true, "status" = 'APPROVED', "accessScheduler" = true, "accessCallSheet" = true WHERE LOWER("email") = $1`,
-      adminEmail
-    );
-    if (result > 0) console.log(`[admin-email] granted admin to ${adminEmail}`);
+    const user = await prisma.user.findFirst({ where: { email: { equals: adminEmail, mode: 'insensitive' } } });
+    if (!user) {
+      console.warn(`[startup] ADMIN_EMAIL "${adminEmail}" does not match any user`);
+      return;
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'ADMIN', isActive: true },
+    });
+    console.log(`[startup] Confirmed admin role for ${adminEmail}`);
   } catch (e: unknown) {
-    console.warn('[admin-email] patch skipped:', (e as Error).message);
+    console.warn('[startup] ensureAdminEmail failed:', (e as Error).message);
   }
 }
 
 async function start() {
-  await applySchemaPatches();
-  await applyAdminEmail();
-
+  await ensureAdminEmail();
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);
   });

@@ -1,12 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-router.use(requireApproved);
 
 const typeSchema = z.object({
   name: z.string().min(1),
@@ -25,14 +24,14 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   res.json(types);
 });
 
-router.post('/', requireMinRole('EDITOR'), validate(typeSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/',  validate(typeSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const type = await prisma.photographyType.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(type);
 });
 
-router.put('/:typeId', requireMinRole('EDITOR'), validate(typeSchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/:typeId',  validate(typeSchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const type = await prisma.photographyType.findFirst({ where: { id: req.params.typeId, projectId: project.id } });
@@ -41,7 +40,7 @@ router.put('/:typeId', requireMinRole('EDITOR'), validate(typeSchema.partial()),
   res.json(updated);
 });
 
-router.delete('/:typeId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/:typeId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const type = await prisma.photographyType.findFirst({ where: { id: req.params.typeId, projectId: project.id } });

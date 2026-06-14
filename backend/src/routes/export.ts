@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../utils/prisma';
-import { authenticate, requireApproved } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { buildScheduleWorkbook, buildAllCallSheetsWorkbook, buildSingleCallSheetWorkbook, ScheduleProject } from '../services/exportExcel';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-router.use(requireApproved);
 
 async function getFullProject(projectId: string, organisationId: string): Promise<ScheduleProject | null> {
   const project = await prisma.project.findFirst({

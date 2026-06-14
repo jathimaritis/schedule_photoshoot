@@ -2,12 +2,11 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { ProjectStatus } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
+import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router();
 router.use(authenticate);
-router.use(requireApproved);
 
 const projectSchema = z.object({
   name: z.string().min(1),
@@ -42,7 +41,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   res.json(projects);
 });
 
-router.post('/', requireMinRole('EDITOR'), validate(projectSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/',  validate(projectSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await prisma.project.create({
     data: { ...req.body, ...orgScope(req), createdById: req.user!.userId },
   });
@@ -66,7 +65,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   res.json(project);
 });
 
-router.put('/:id', requireMinRole('EDITOR'), validate(updateProjectSchema), async (req: Request, res: Response): Promise<void> => {
+router.put('/:id',  validate(updateProjectSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await prisma.project.findFirst({ where: { id: req.params.id, ...orgScope(req) } });
   if (!project) {
     res.status(404).json({ error: 'Project not found' });
@@ -76,7 +75,7 @@ router.put('/:id', requireMinRole('EDITOR'), validate(updateProjectSchema), asyn
   res.json(updated);
 });
 
-router.delete('/:id', requireMinRole('ADMIN'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/:id', requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const project = await prisma.project.findFirst({ where: { id: req.params.id, ...orgScope(req) } });
   if (!project) {
     res.status(404).json({ error: 'Project not found' });
@@ -86,7 +85,7 @@ router.delete('/:id', requireMinRole('ADMIN'), async (req: Request, res: Respons
   res.json({ message: 'Project deleted' });
 });
 
-router.post('/:id/duplicate', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/duplicate',  async (req: Request, res: Response): Promise<void> => {
   const source = await prisma.project.findFirst({
     where: { id: req.params.id, ...orgScope(req) },
     include: {

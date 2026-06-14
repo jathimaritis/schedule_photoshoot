@@ -1,12 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-router.use(requireApproved);
 
 const daySchema = z.object({
   dayNumber: z.number().int().min(1),
@@ -35,14 +34,14 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   res.json(days);
 });
 
-router.post('/', requireMinRole('EDITOR'), validate(daySchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/',  validate(daySchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const day = await prisma.shootingDay.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(day);
 });
 
-router.post('/bulk', requireMinRole('EDITOR'), validate(bulkDaySchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/bulk',  validate(bulkDaySchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
 
@@ -55,7 +54,7 @@ router.post('/bulk', requireMinRole('EDITOR'), validate(bulkDaySchema), async (r
   res.status(201).json(days);
 });
 
-router.put('/:dayId', requireMinRole('EDITOR'), validate(daySchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/:dayId',  validate(daySchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const day = await prisma.shootingDay.findFirst({ where: { id: req.params.dayId, projectId: project.id } });
@@ -64,7 +63,7 @@ router.put('/:dayId', requireMinRole('EDITOR'), validate(daySchema.partial()), a
   res.json(updated);
 });
 
-router.delete('/:dayId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/:dayId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const day = await prisma.shootingDay.findFirst({ where: { id: req.params.dayId, projectId: project.id } });

@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 
+const APP_NAME = 'Shoot Scheduler';
+
 function createTransporter() {
   if (!process.env.SMTP_HOST) {
     return nodemailer.createTransport({ jsonTransport: true });
@@ -14,37 +16,42 @@ function createTransporter() {
   });
 }
 
-export async function sendInviteEmail(to: string, inviteUrl: string, orgName: string): Promise<void> {
+export async function sendInviteEmail(to: string, inviteUrl: string, _orgName: string): Promise<void> {
   const transporter = createTransporter();
   const info = await transporter.sendMail({
-    from: process.env.SMTP_FROM || 'noreply@photoshoot-scheduler.com',
+    from: process.env.SMTP_FROM || `noreply@photoshoot-scheduler.com`,
     to,
-    subject: `You've been invited to ${orgName} on Photoshoot Scheduler`,
-    html: `
-      <h2>You're invited!</h2>
-      <p>You've been invited to join <strong>${orgName}</strong> on Photoshoot Scheduler.</p>
-      <p><a href="${inviteUrl}" style="background:#1A1A2E;color:#D4AF37;padding:12px 24px;text-decoration:none;border-radius:4px;">Accept Invitation</a></p>
-      <p>This link expires in 24 hours.</p>
-    `,
+    subject: `You have been invited to join ${APP_NAME}`,
+    text: [
+      `You have been invited to join ${APP_NAME}.`,
+      '',
+      'Click the link below to set up your account. This link expires in 7 days.',
+      '',
+      inviteUrl,
+    ].join('\n'),
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Invite email (stub):', JSON.stringify(info));
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[email] Invite sent (stub):', JSON.stringify(info));
   }
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
   const transporter = createTransporter();
   const info = await transporter.sendMail({
-    from: process.env.SMTP_FROM || 'noreply@photoshoot-scheduler.com',
+    from: process.env.SMTP_FROM || `noreply@photoshoot-scheduler.com`,
     to,
-    subject: 'Reset your Photoshoot Scheduler password',
-    html: `
-      <h2>Password Reset</h2>
-      <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-      <p><a href="${resetUrl}" style="background:#1A1A2E;color:#D4AF37;padding:12px 24px;text-decoration:none;border-radius:4px;">Reset Password</a></p>
-    `,
+    subject: `Reset your ${APP_NAME} password`,
+    text: [
+      `Someone requested a password reset for your ${APP_NAME} account.`,
+      '',
+      'Click the link below to reset your password. This link expires in 1 hour.',
+      '',
+      resetUrl,
+      '',
+      'If you did not request this, you can safely ignore this email.',
+    ].join('\n'),
   });
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Password reset email (stub):', JSON.stringify(info));
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[email] Password reset sent (stub):', JSON.stringify(info));
   }
 }

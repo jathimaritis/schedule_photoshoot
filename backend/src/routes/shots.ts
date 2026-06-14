@@ -3,12 +3,11 @@ import { z } from 'zod';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import prisma from '../utils/prisma';
-import { authenticate, requireMinRole, requireApproved } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-router.use(requireApproved);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const sectionSchema = z.object({ name: z.string().min(1), sortOrder: z.number().int().optional(), photographyTypeId: z.string().optional().nullable() });
@@ -78,7 +77,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 });
 
 // Import .xlsx shot list
-router.post('/import', requireMinRole('EDITOR'), upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+router.post('/import',  upload.single('file'), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return; }
@@ -137,14 +136,14 @@ router.post('/import', requireMinRole('EDITOR'), upload.single('file'), async (r
 });
 
 // Sections
-router.post('/sections', requireMinRole('EDITOR'), validate(sectionSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/sections',  validate(sectionSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const section = await prisma.shotSection.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(section);
 });
 
-router.put('/sections/:sectionId', requireMinRole('EDITOR'), validate(sectionSchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/sections/:sectionId',  validate(sectionSchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const s = await prisma.shotSection.findFirst({ where: { id: req.params.sectionId, projectId: project.id } });
@@ -152,7 +151,7 @@ router.put('/sections/:sectionId', requireMinRole('EDITOR'), validate(sectionSch
   res.json(await prisma.shotSection.update({ where: { id: s.id }, data: req.body }));
 });
 
-router.delete('/sections/:sectionId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/sections/:sectionId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const s = await prisma.shotSection.findFirst({ where: { id: req.params.sectionId, projectId: project.id } });
@@ -162,14 +161,14 @@ router.delete('/sections/:sectionId', requireMinRole('EDITOR'), async (req: Requ
 });
 
 // Categories
-router.post('/categories', requireMinRole('EDITOR'), validate(categorySchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/categories',  validate(categorySchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const cat = await prisma.shotCategory.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(cat);
 });
 
-router.put('/categories/:catId', requireMinRole('EDITOR'), validate(categorySchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/categories/:catId',  validate(categorySchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const cat = await prisma.shotCategory.findFirst({ where: { id: req.params.catId, projectId: project.id } });
@@ -177,7 +176,7 @@ router.put('/categories/:catId', requireMinRole('EDITOR'), validate(categorySche
   res.json(await prisma.shotCategory.update({ where: { id: cat.id }, data: req.body }));
 });
 
-router.delete('/categories/:catId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/categories/:catId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const cat = await prisma.shotCategory.findFirst({ where: { id: req.params.catId, projectId: project.id } });
@@ -187,14 +186,14 @@ router.delete('/categories/:catId', requireMinRole('EDITOR'), async (req: Reques
 });
 
 // Locations
-router.post('/locations', requireMinRole('EDITOR'), validate(locationSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/locations',  validate(locationSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const loc = await prisma.shotLocation.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(loc);
 });
 
-router.put('/locations/:locId', requireMinRole('EDITOR'), validate(locationSchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/locations/:locId',  validate(locationSchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const loc = await prisma.shotLocation.findFirst({ where: { id: req.params.locId, projectId: project.id } });
@@ -202,7 +201,7 @@ router.put('/locations/:locId', requireMinRole('EDITOR'), validate(locationSchem
   res.json(await prisma.shotLocation.update({ where: { id: loc.id }, data: req.body }));
 });
 
-router.delete('/locations/:locId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/locations/:locId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const loc = await prisma.shotLocation.findFirst({ where: { id: req.params.locId, projectId: project.id } });
@@ -212,14 +211,14 @@ router.delete('/locations/:locId', requireMinRole('EDITOR'), async (req: Request
 });
 
 // Shots
-router.post('/shots-item', requireMinRole('EDITOR'), validate(shotSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/shots-item',  validate(shotSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const shot = await prisma.shot.create({ data: { ...req.body, projectId: project.id } });
   res.status(201).json(shot);
 });
 
-router.put('/shots-item/:shotId', requireMinRole('EDITOR'), validate(shotSchema.partial()), async (req: Request, res: Response): Promise<void> => {
+router.put('/shots-item/:shotId',  validate(shotSchema.partial()), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const shot = await prisma.shot.findFirst({ where: { id: req.params.shotId, projectId: project.id } });
@@ -227,7 +226,7 @@ router.put('/shots-item/:shotId', requireMinRole('EDITOR'), validate(shotSchema.
   res.json(await prisma.shot.update({ where: { id: shot.id }, data: req.body }));
 });
 
-router.delete('/shots-item/:shotId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/shots-item/:shotId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const shot = await prisma.shot.findFirst({ where: { id: req.params.shotId, projectId: project.id } });
@@ -236,7 +235,7 @@ router.delete('/shots-item/:shotId', requireMinRole('EDITOR'), async (req: Reque
   res.json({ message: 'Deleted' });
 });
 
-router.post('/shots-item/:shotId/reorder', requireMinRole('EDITOR'), validate(reorderSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/shots-item/:shotId/reorder',  validate(reorderSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   const shot = await prisma.shot.findFirst({ where: { id: req.params.shotId, projectId: project.id } });
@@ -245,7 +244,7 @@ router.post('/shots-item/:shotId/reorder', requireMinRole('EDITOR'), validate(re
 });
 
 // Assignments
-router.post('/assignments', requireMinRole('EDITOR'), validate(assignmentSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/assignments',  validate(assignmentSchema), async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
 
@@ -262,7 +261,7 @@ router.post('/assignments', requireMinRole('EDITOR'), validate(assignmentSchema)
   res.status(201).json(assignment);
 });
 
-router.delete('/assignments/:assignmentId', requireMinRole('EDITOR'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/assignments/:assignmentId',  async (req: Request, res: Response): Promise<void> => {
   const project = await getProject(req.params.id, req.user!.organisationId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
 
