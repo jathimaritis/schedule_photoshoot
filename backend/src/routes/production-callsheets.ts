@@ -48,6 +48,8 @@ const callSheetSchema = z.object({
   endOfDay: z.string().optional().nullable(),
   contacts: z.array(contactSchema).optional().nullable(),
   weatherData: weatherDataSchema,
+  locationLat: z.number().optional().nullable(),
+  locationLng: z.number().optional().nullable(),
 });
 
 const shotSchema = z.object({
@@ -86,79 +88,156 @@ function shiftTime(t: string, mins: number): string {
   return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
 }
 
-// Sun times + weather — geocodes server-side then fetches forecast.
-// Accepts ?location=<string>&date=<yyyy-MM-dd> so the browser makes zero external calls.
+// Sun times + weather.
+// Primary: ?lat=<number>&lng=<number>&date=<yyyy-MM-dd>  (exact coords from Google Places — no geocoding)
+// Fallback: ?location=<string>&date=<yyyy-MM-dd>  (geocodes text string via Open-Meteo)
+// Returns partial results if one API fails.
 // Must come BEFORE /:id route.
 router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
-  console.log('[sun-times] handler reached, query:', req.query);
-  const { location, date } = req.query as Record<string, string>;
-  if (!location || !date) {
-    res.status(400).json({ error: 'location and date are required' });
+  console.log('[sun-times] query:', req.query);
+  const { lat, lng, location, date } = req.query as Record<string, string>;
+
+  if (!date) {
+    res.status(400).json({ error: 'date is required' });
     return;
   }
-  try {
-    // Step 1: Geocode location via Open-Meteo (done server-side to avoid any browser CORS issues)
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
-    console.log('[sun-times] geocoding:', geoUrl);
-    const geoResp = await fetch(geoUrl);
-    if (!geoResp.ok) throw new Error(`Geocoding failed: HTTP ${geoResp.status}`);
-    const geoData = await geoResp.json() as { results?: { latitude: number; longitude: number; name: string; country?: string }[] };
-    const place = geoData.results?.[0];
-    if (!place) throw new Error(`Location not found: "${location}"`);
-    console.log('[sun-times] geocoded to:', place.latitude, place.longitude, place.name, place.country ?? '');
 
-    // Step 2: Fetch forecast from Open-Meteo
-    const forecastUrl = [
-      'https://api.open-meteo.com/v1/forecast',
-      `?latitude=${place.latitude}&longitude=${place.longitude}`,
-      `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
-      `&timezone=auto&start_date=${date}&end_date=${date}`,
-    ].join('');
-    console.log('[sun-times] fetching forecast:', forecastUrl);
-    const resp = await fetch(forecastUrl);
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`Open-Meteo forecast failed: HTTP ${resp.status} — ${body.slice(0, 200)}`);
+  let latitude: number;
+  let longitude: number;
+
+  if (lat && lng) {
+    latitude = parseFloat(lat);
+    longitude = parseFloat(lng);
+    if (isNaN(latitude) || isNaN(longitude)) {
+      res.status(400).json({ error: 'Invalid lat/lng values' });
+      return;
     }
-    const data = await resp.json() as {
-      daily?: {
-        sunrise?: string[]; sunset?: string[];
-        weathercode?: number[];
-        precipitation_sum?: number[];
-        windspeed_10m_max?: number[];
-        temperature_2m_max?: number[];
-        temperature_2m_min?: number[];
-      }
-    };
-    console.log('[sun-times] forecast daily keys:', data.daily ? Object.keys(data.daily) : 'none');
-
-    const sunriseIso = data.daily?.sunrise?.[0];
-    const sunsetIso  = data.daily?.sunset?.[0];
-    const sunriseTime = sunriseIso ? parseIsoTime(sunriseIso) : null;
-    const sunsetTime  = sunsetIso  ? parseIsoTime(sunsetIso)  : null;
-    const wCode = data.daily?.weathercode?.[0];
-
-    const result = {
-      sunrise:      sunriseTime,
-      sunset:       sunsetTime,
-      goldenHourAm: sunriseTime,
-      goldenHourPm: sunsetTime ? shiftTime(sunsetTime, -60) : null,
-      blueHourAm:   sunriseTime ? shiftTime(sunriseTime, -40) : null,
-      blueHourPm:   sunsetTime,
-      weather: {
-        description:   wCode !== undefined ? (WMO[wCode] ?? `Code ${wCode}`) : null,
-        tempMax:       data.daily?.temperature_2m_max?.[0] != null ? Math.round(data.daily.temperature_2m_max[0]!) : null,
-        tempMin:       data.daily?.temperature_2m_min?.[0] != null ? Math.round(data.daily.temperature_2m_min[0]!) : null,
-        precipitation: data.daily?.precipitation_sum?.[0] ?? null,
-        windSpeed:     data.daily?.windspeed_10m_max?.[0] != null ? Math.round(data.daily.windspeed_10m_max[0]!) : null,
-      },
-    };
-    console.log('[sun-times] returning:', JSON.stringify(result).slice(0, 300));
-    res.json(result);
-  } catch (err) {
-    console.error('[sun-times] error:', err);
-    res.status(502).json({ error: (err as Error).message ?? 'Could not fetch sun/weather data' });
+    console.log('[sun-times] using provided coordinates:', latitude, longitude);
+  } else if (location) {
+    console.log('[sun-times] geocoding location text (fallback):', location);
+    try {
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
+      const geoResp = await fetch(geoUrl);
+      if (!geoResp.ok) throw new Error(`Geocoding failed: HTTP ${geoResp.status}`);
+      const geoData = await geoResp.json() as { results?: { latitude: number; longitude: number; name: string; country?: string }[] };
+      const place = geoData.results?.[0];
+      if (!place) throw new Error(`Location not found: "${location}"`);
+      latitude = place.latitude;
+      longitude = place.longitude;
+      console.log('[sun-times] geocoded to:', latitude, longitude, place.name, place.country ?? '');
+    } catch (err) {
+      console.error('[sun-times] geocoding failed:', err);
+      res.status(502).json({ error: (err as Error).message ?? 'Geocoding failed' });
+      return;
+    }
+  } else {
+    res.status(400).json({ error: 'Either lat+lng or location is required' });
+    return;
   }
+
+  // Convert UTC ISO string from sunrise-sunset.org to local HH:mm using offset from Open-Meteo
+  function utcIsoToLocal(isoUtc: string, offsetSeconds: number): string {
+    const ms = new Date(isoUtc).getTime() + offsetSeconds * 1000;
+    const d = new Date(ms);
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  }
+
+  // Call Open-Meteo (weather + timezone + sun times as fallback) and sunrise-sunset.org in parallel
+  const meteoUrl = [
+    'https://api.open-meteo.com/v1/forecast',
+    `?latitude=${latitude}&longitude=${longitude}`,
+    `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
+    `&timezone=auto&start_date=${date}&end_date=${date}`,
+  ].join('');
+  const sunApiUrl = `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&date=${date}&formatted=0`;
+
+  console.log('[sun-times] fetching Open-Meteo:', meteoUrl);
+  console.log('[sun-times] fetching sunrise-sunset.org:', sunApiUrl);
+
+  const [meteoSettled, sunSettled] = await Promise.allSettled([
+    fetch(meteoUrl).then(async (r) => {
+      if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
+      return r.json() as Promise<{
+        utc_offset_seconds?: number;
+        daily?: {
+          sunrise?: string[]; sunset?: string[];
+          weathercode?: number[];
+          precipitation_sum?: number[];
+          windspeed_10m_max?: number[];
+          temperature_2m_max?: number[];
+          temperature_2m_min?: number[];
+        };
+      }>;
+    }),
+    fetch(sunApiUrl).then(async (r) => {
+      if (!r.ok) throw new Error(`sunrise-sunset.org HTTP ${r.status}`);
+      return r.json() as Promise<{
+        status: string;
+        results?: { sunrise: string; sunset: string; civil_twilight_begin: string; civil_twilight_end: string };
+      }>;
+    }),
+  ]);
+
+  if (meteoSettled.status === 'rejected') console.warn('[sun-times] Open-Meteo failed:', meteoSettled.reason);
+  if (sunSettled.status === 'rejected') console.warn('[sun-times] sunrise-sunset.org failed:', sunSettled.reason);
+
+  if (meteoSettled.status === 'rejected' && sunSettled.status === 'rejected') {
+    res.status(502).json({ error: 'Both sun-time and weather APIs failed. Enter times manually.' });
+    return;
+  }
+
+  const meteo = meteoSettled.status === 'fulfilled' ? meteoSettled.value : null;
+  const sunApi = sunSettled.status === 'fulfilled' && sunSettled.value.status === 'OK' ? sunSettled.value : null;
+  const utcOffset = meteo?.utc_offset_seconds ?? null;
+
+  // Determine sunrise/sunset: prefer sunrise-sunset.org (more accurate) if we have the UTC offset to convert
+  let sunriseTime: string | null = null;
+  let sunsetTime: string | null = null;
+  let goldenHourAmTime: string | null = null;
+  let goldenHourPmTime: string | null = null;
+  let blueHourAmTime: string | null = null;
+  let blueHourPmTime: string | null = null;
+
+  if (sunApi?.results && utcOffset != null) {
+    sunriseTime = utcIsoToLocal(sunApi.results.sunrise, utcOffset);
+    sunsetTime  = utcIsoToLocal(sunApi.results.sunset, utcOffset);
+    // Civil twilight begin = golden hour start AM; civil twilight end = golden hour end PM
+    goldenHourAmTime = utcIsoToLocal(sunApi.results.civil_twilight_begin, utcOffset);
+    goldenHourPmTime = utcIsoToLocal(sunApi.results.civil_twilight_end, utcOffset);
+    blueHourAmTime   = sunriseTime ? shiftTime(sunriseTime, -40) : null;
+    blueHourPmTime   = sunsetTime;
+    console.log('[sun-times] using sunrise-sunset.org:', sunriseTime, sunsetTime);
+  } else {
+    // Fall back to Open-Meteo sun times
+    const sunriseIso = meteo?.daily?.sunrise?.[0];
+    const sunsetIso  = meteo?.daily?.sunset?.[0];
+    sunriseTime = sunriseIso ? parseIsoTime(sunriseIso) : null;
+    sunsetTime  = sunsetIso  ? parseIsoTime(sunsetIso)  : null;
+    goldenHourAmTime = sunriseTime;
+    goldenHourPmTime = sunsetTime ? shiftTime(sunsetTime, -60) : null;
+    blueHourAmTime   = sunriseTime ? shiftTime(sunriseTime, -40) : null;
+    blueHourPmTime   = sunsetTime;
+    console.log('[sun-times] using Open-Meteo sun times:', sunriseTime, sunsetTime);
+  }
+
+  const wCode = meteo?.daily?.weathercode?.[0];
+  const result = {
+    sunrise:      sunriseTime,
+    sunset:       sunsetTime,
+    goldenHourAm: goldenHourAmTime,
+    goldenHourPm: goldenHourPmTime,
+    blueHourAm:   blueHourAmTime,
+    blueHourPm:   blueHourPmTime,
+    weather: {
+      description:   wCode !== undefined ? (WMO[wCode] ?? `Code ${wCode}`) : null,
+      tempMax:       meteo?.daily?.temperature_2m_max?.[0] != null ? Math.round(meteo.daily.temperature_2m_max[0]!) : null,
+      tempMin:       meteo?.daily?.temperature_2m_min?.[0] != null ? Math.round(meteo.daily.temperature_2m_min[0]!) : null,
+      precipitation: meteo?.daily?.precipitation_sum?.[0] ?? null,
+      windSpeed:     meteo?.daily?.windspeed_10m_max?.[0] != null ? Math.round(meteo.daily.windspeed_10m_max[0]!) : null,
+    },
+  };
+  console.log('[sun-times] result:', JSON.stringify(result).slice(0, 400));
+  res.json(result);
 });
 
 // List

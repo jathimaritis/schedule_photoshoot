@@ -45,6 +45,14 @@ export const productionCsApi = {
   exportExcelUrl: (id: string) => `/production-callsheets/${id}/export/excel`,
   exportPdfUrl: (id: string) => `/production-callsheets/${id}/export/pdf`,
 
-  fetchSunTimes: (location: string, date: string) =>
-    api.get<SunTimesResponse>('/production-callsheets/sun-times', { params: { location, date } }).then((r) => r.data),
+  fetchSunTimes: (params: { lat?: number | null; lng?: number | null; location?: string | null; date: string }) => {
+    const p: Record<string, string | number> = { date: params.date };
+    if (params.lat != null && params.lng != null) {
+      p.lat = params.lat;
+      p.lng = params.lng;
+    } else if (params.location) {
+      p.location = params.location;
+    }
+    return api.get<SunTimesResponse>('/production-callsheets/sun-times', { params: p }).then((r) => r.data);
+  },
 };

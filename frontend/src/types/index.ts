@@ -72,6 +72,8 @@ export interface ProductionCallSheet {
   endOfDay?: string | null;
   contacts?: Contact[];
   weatherData?: WeatherData | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
   organisationId: string;
   createdById: string;
   createdAt: string;

@@ -78,6 +78,8 @@ async function applySchemaPatches() {
     ['ProductionShot cs fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionShot_callSheetId_fkey') THEN ALTER TABLE "ProductionShot" ADD CONSTRAINT "ProductionShot_callSheetId_fkey" FOREIGN KEY ("callSheetId") REFERENCES "ProductionCallSheet"("id") ON DELETE CASCADE ON UPDATE CASCADE; END IF; END $$`],
     ['ProductionCallSheet.contacts', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "contacts" JSONB NOT NULL DEFAULT '[]'`],
     ['ProductionCallSheet.weatherData', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "weatherData" JSONB`],
+    ['ProductionCallSheet.locationLat', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLat" DOUBLE PRECISION`],
+    ['ProductionCallSheet.locationLng', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "locationLng" DOUBLE PRECISION`],
   ];
 
   for (const [name, sql] of patches) {

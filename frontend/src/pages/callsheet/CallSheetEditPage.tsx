@@ -12,6 +12,7 @@ import { productionCsApi } from '../../api/productionCallsheets';
 import { ProductionCallSheet, ProductionShot, Contact, WeatherData } from '../../types';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import PlacesAutocompleteInput from '../../components/callsheet/PlacesAutocompleteInput';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
@@ -138,19 +139,32 @@ export default function CallSheetEditPage() {
   });
 
   const handleFetchLight = async () => {
-    const loc = form.location;
     const date = form.shootingDate ? format(new Date(form.shootingDate), 'yyyy-MM-dd') : null;
-    if (!loc || !date) {
-      toast.error('Enter a location and shooting date first');
+    if (!date) {
+      toast.error('Select a shooting date first');
+      return;
+    }
+    const hasCoords = form.locationLat != null && form.locationLng != null;
+    const hasLocation = Boolean(form.location);
+    if (!hasCoords && !hasLocation) {
+      toast.error('Enter a location first');
       return;
     }
     setFetchingLight(true);
     setLightWarning(null);
     try {
-      // All geocoding + sun/weather data fetched via the backend to avoid any CORS or browser network issues
-      console.log('[fetchLight] calling backend sun-times with location:', loc, 'date:', date);
-      const result = await productionCsApi.fetchSunTimes(loc, date);
-      console.log('[fetchLight] backend result:', result);
+      if (hasCoords) {
+        console.log('[fetchLight] using stored coordinates:', form.locationLat, form.locationLng, 'date:', date);
+      } else {
+        console.log('[fetchLight] no coordinates — falling back to location text:', form.location);
+      }
+      const result = await productionCsApi.fetchSunTimes({
+        lat: form.locationLat ?? null,
+        lng: form.locationLng ?? null,
+        location: hasCoords ? null : form.location,
+        date,
+      });
+      console.log('[fetchLight] result:', result);
 
       setForm((f) => ({
         ...f,
@@ -282,11 +296,11 @@ export default function CallSheetEditPage() {
             value={form.client ?? ''}
             onChange={(e) => set('client', e.target.value || null)}
           />
-          <Input
-            label="Location"
+          <PlacesAutocompleteInput
             value={form.location ?? ''}
-            onChange={(e) => set('location', e.target.value || null)}
-            placeholder="e.g. Cape Town, South Africa"
+            onChange={(name, lat, lng) => {
+              setForm((f) => ({ ...f, location: name || null, locationLat: lat, locationLng: lng }));
+            }}
           />
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Shooting Date</label>
