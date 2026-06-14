@@ -108,7 +108,12 @@ router.delete('/users/:userId', requireAdmin, async (req: Request, res: Response
   if (!target) { res.status(404).json({ error: 'User not found' }); return; }
   if (target.role === 'ADMIN') { res.status(400).json({ error: 'Cannot delete an admin account' }); return; }
 
-  await prisma.user.delete({ where: { id: userId } });
+  await prisma.$transaction([
+    prisma.productionCallSheet.deleteMany({ where: { createdById: userId } }),
+    prisma.project.deleteMany({ where: { createdById: userId } }),
+    prisma.inviteToken.deleteMany({ where: { createdById: userId } }),
+    prisma.user.delete({ where: { id: userId } }),
+  ]);
   res.json({ message: 'User deleted' });
 });
 

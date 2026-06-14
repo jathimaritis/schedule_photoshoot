@@ -149,7 +149,7 @@ function UsersTab({ users, isLoading, currentUserId, qc }: {
                   <td className="px-4 py-3 text-right">
                     {!locked && (
                       <button
-                        onClick={() => { if (confirm(`Permanently delete ${user.name}? This cannot be undone.`)) deleteMutation.mutate(user.id); }}
+                        onClick={() => { if (confirm(`Are you sure you want to delete ${user.name}? This will permanently delete all their call sheets and projects.`)) deleteMutation.mutate(user.id); }}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                         title="Delete user"
                       >
