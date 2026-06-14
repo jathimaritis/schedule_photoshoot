@@ -8,10 +8,8 @@ datasource db {
 }
 
 enum Role {
-  OWNER
   ADMIN
-  EDITOR
-  VIEWER
+  MEMBER
 }
 
 enum ProjectStatus {
@@ -34,16 +32,9 @@ enum FieldGroup {
 }
 
 enum ModuleAccess {
-  NONE
   SCHEDULER
-  CALL_SHEET
+  CALLSHEET
   BOTH
-}
-
-enum UserStatus {
-  PENDING
-  APPROVED
-  RESTRICTED
 }
 
 model Organisation {
@@ -60,6 +51,7 @@ model Organisation {
   users            User[]
   projects         Project[]
   productionCallSheets ProductionCallSheet[]
+  inviteTokens     InviteToken[]
 }
 
 model User {
@@ -68,12 +60,8 @@ model User {
   passwordHash   String
   name           String
   avatarUrl      String?
-  role           Role         @default(VIEWER)
-  moduleAccess   ModuleAccess @default(NONE)
-  status         UserStatus   @default(PENDING)
-  accessScheduler Boolean     @default(false)
-  accessCallSheet Boolean     @default(false)
-  isAdmin        Boolean      @default(false)
+  role           Role         @default(MEMBER)
+  moduleAccess   ModuleAccess @default(SCHEDULER)
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   lastLoginAt    DateTime?
@@ -88,16 +76,19 @@ model User {
 }
 
 model InviteToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  email     String
-  role      Role     @default(VIEWER)
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  createdBy   User   @relation(fields: [createdById], references: [id])
-  createdById String
+  id             String       @id @default(cuid())
+  email          String
+  token          String       @unique
+  moduleAccess   ModuleAccess
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdById    String
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
   organisationId String
+
+  @@index([organisationId])
 }
 
 model PasswordReset {
