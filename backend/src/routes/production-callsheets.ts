@@ -313,12 +313,13 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
 
     // Helpers
     const fill = (hex: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}` } });
-    const wfont = (sz = 10): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FFFFFFFF' }, bold: true });
-    const bfont = (sz = 10, bold = false): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FF1A1A1A' }, bold });
+    // wfont: white bold (for headers); bfont: dark regular/bold (for body)
+    const wfont = (sz = 12): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FFFFFFFF' }, bold: true });
+    const bfont = (sz = 11, bold = false): Partial<ExcelJS.Font> => ({ name: 'Calibri', size: sz, color: { argb: 'FF1A1A1A' }, bold });
 
     // Single worksheet, 5 columns: Label(A) | Value(B) | Label2(C) | Value2(D) | Status/Extra(E)
     const ws = wb.addWorksheet('Call Sheet');
-    ws.columns = [{ width: 20 }, { width: 28 }, { width: 16 }, { width: 26 }, { width: 13 }];
+    ws.columns = [{ width: 22 }, { width: 30 }, { width: 18 }, { width: 28 }, { width: 14 }];
 
     // Fit to 1 page wide when printed
     ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, orientation: 'landscape' };
@@ -327,9 +328,9 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
     const titleRow = ws.addRow([`${sheet.projectName} — PRODUCTION CALL SHEET`]);
     ws.mergeCells(`A${titleRow.number}:E${titleRow.number}`);
     titleRow.getCell(1).fill = fill(NAVY);
-    titleRow.getCell(1).font = wfont(13);
+    titleRow.getCell(1).font = wfont(15);
     titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-    titleRow.height = 28;
+    titleRow.height = 36;
     ws.addRow([]); // spacer
 
     // ── Section header helper ──────────────────────────────────────────────
@@ -338,26 +339,26 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
       const r = ws.addRow([label]);
       ws.mergeCells(`A${r.number}:E${r.number}`);
       r.getCell(1).fill = fill(PURPLE);
-      r.getCell(1).font = wfont(10);
+      r.getCell(1).font = wfont(12);
       r.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-      r.height = 20;
+      r.height = 24;
     };
 
     // ── Pair row helper (label1 | value1 | label2 | value2) ───────────────
     const pairRow = (l1: string, v1: string, l2 = '', v2 = '', stripe = false) => {
       const r = ws.addRow([l1, v1, l2, v2, '']);
-      r.getCell(1).fill = fill(LIGHT); r.getCell(1).font = bfont(9, true);
-      r.getCell(2).font = bfont(9); r.getCell(2).alignment = { wrapText: false };
+      r.getCell(1).fill = fill(LIGHT); r.getCell(1).font = bfont(11, true);
+      r.getCell(2).font = bfont(11); r.getCell(2).alignment = { wrapText: false };
       if (l2) {
-        r.getCell(3).fill = fill(LIGHT); r.getCell(3).font = bfont(9, true);
-        r.getCell(4).font = bfont(9);
+        r.getCell(3).fill = fill(LIGHT); r.getCell(3).font = bfont(11, true);
+        r.getCell(4).font = bfont(11);
       }
       if (stripe) {
         r.getCell(2).fill = fill(STRIPE);
         r.getCell(4).fill = fill(STRIPE);
         r.getCell(5).fill = fill(STRIPE);
       }
-      r.height = 18;
+      r.height = 22;
       return r;
     };
 
@@ -370,34 +371,34 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
     // General Notes — full-width, tall, wrapped
     const notesRow = ws.addRow(['General Notes', sheet.generalNotes ?? '', '', '', '']);
     ws.mergeCells(`B${notesRow.number}:E${notesRow.number}`);
-    notesRow.getCell(1).fill = fill(LIGHT); notesRow.getCell(1).font = bfont(9, true);
+    notesRow.getCell(1).fill = fill(LIGHT); notesRow.getCell(1).font = bfont(11, true);
     notesRow.getCell(1).alignment = { vertical: 'top' };
-    notesRow.getCell(2).font = bfont(9);
+    notesRow.getCell(2).font = bfont(11);
     notesRow.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-    notesRow.height = 60; // ~80px
+    notesRow.height = 72; // ~96px — tall enough for multi-line notes
 
     // ── CREW & CLIENT CONTACTS ────────────────────────────────────────────
     sectionHeader('CREW & CLIENT CONTACTS');
     if (contacts.length === 0) {
       const er = ws.addRow(['No contacts added.', '', '', '', '']);
       ws.mergeCells(`A${er.number}:E${er.number}`);
-      er.getCell(1).font = bfont(9); er.height = 16;
+      er.getCell(1).font = bfont(11); er.height = 22;
     } else {
       // Column header
       const ch = ws.addRow(['Title', 'Name', 'Phone', 'Email', '']);
       ws.mergeCells(`D${ch.number}:E${ch.number}`);
       for (let c = 1; c <= 4; c++) {
         ch.getCell(c).fill = fill('3C3C64');
-        ch.getCell(c).font = wfont(9);
+        ch.getCell(c).font = wfont(11);
         ch.getCell(c).alignment = { horizontal: 'center' };
       }
-      ch.height = 17;
+      ch.height = 22;
       contacts.forEach((ct, i) => {
         const r = ws.addRow([ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? '', '']);
         ws.mergeCells(`D${r.number}:E${r.number}`);
         const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
-        for (let c = 1; c <= 4; c++) { r.getCell(c).fill = fill(bg); r.getCell(c).font = bfont(9); }
-        r.height = 16;
+        for (let c = 1; c <= 4; c++) { r.getCell(c).fill = fill(bg); r.getCell(c).font = bfont(11); }
+        r.height = 20;
       });
     }
 
@@ -423,22 +424,23 @@ router.get('/:id/export/excel', async (req: Request, res: Response): Promise<voi
 
     // ── SHOT LIST ─────────────────────────────────────────────────────────
     sectionHeader('SHOT LIST');
-    const sh = ws.addRow(['Shooting Location', 'Shot Description', 'Timing', 'Notes', 'Status']);
+    const sh = ws.addRow(['Shooting Location', 'Shot Description', 'Timing', 'Notes', 'Done']);
     for (let c = 1; c <= 5; c++) {
       sh.getCell(c).fill = fill('3C3C64');
-      sh.getCell(c).font = wfont(9);
-      sh.getCell(c).alignment = { horizontal: 'center' };
+      sh.getCell(c).font = wfont(11);
+      sh.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
     }
-    sh.height = 17;
+    sh.height = 22;
     sheet.shots.forEach((s, i) => {
-      const r = ws.addRow([s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status]);
+      const doneSymbol = s.status === 'DONE' ? '✓' : '☐';
+      const r = ws.addRow([s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', doneSymbol]);
       const bg = i % 2 === 0 ? 'FFFFFF' : STRIPE;
       for (let c = 1; c <= 5; c++) {
         r.getCell(c).fill = fill(bg);
-        r.getCell(c).font = bfont(9);
-        r.getCell(c).alignment = { wrapText: c === 4 }; // wrap notes column
+        r.getCell(c).font = bfont(11);
+        r.getCell(c).alignment = { wrapText: c === 4, horizontal: c === 5 ? 'center' : 'left', vertical: 'middle' };
       }
-      r.height = 16;
+      r.height = 20;
     });
 
     const buf = await wb.xlsx.writeBuffer();
