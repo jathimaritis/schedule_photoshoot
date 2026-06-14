@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 async function downloadFile(url: string, filename: string) {
   try {
     const response = await api.get(url, { responseType: 'arraybuffer' });
-    const contentType: string = response.headers['content-type'] ?? '';
+    const contentType = String(response.headers['content-type'] ?? '');
     if (!contentType.includes('spreadsheetml')) {
       // Server returned an error response — decode it and surface the message
       const text = new TextDecoder().decode(response.data as ArrayBuffer);
