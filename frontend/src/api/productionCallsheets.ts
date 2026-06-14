@@ -1,5 +1,15 @@
 import api from './client';
-import { ProductionCallSheet, ProductionShot } from '../types';
+import { ProductionCallSheet, ProductionShot, WeatherData } from '../types';
+
+export interface SunTimesResponse {
+  sunrise: string | null;
+  sunset: string | null;
+  goldenHourAm: string | null;
+  goldenHourPm: string | null;
+  blueHourAm: string | null;
+  blueHourPm: string | null;
+  weather: WeatherData;
+}
 
 export const productionCsApi = {
   list: () =>
@@ -34,4 +44,7 @@ export const productionCsApi = {
 
   exportExcelUrl: (id: string) => `/production-callsheets/${id}/export/excel`,
   exportPdfUrl: (id: string) => `/production-callsheets/${id}/export/pdf`,
+
+  fetchSunTimes: (lat: number, lng: number, date: string) =>
+    api.get<SunTimesResponse>('/production-callsheets/sun-times', { params: { lat, lng, date } }).then((r) => r.data),
 };

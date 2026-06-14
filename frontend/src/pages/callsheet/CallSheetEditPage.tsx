@@ -1,67 +1,24 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Save, Download, Plus, Trash2, Sun, Clock, List,
   Upload, FileSpreadsheet, FileText, RefreshCw, ChevronDown, ChevronUp,
+  Users, Wind, CloudRain, Thermometer, AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 import { productionCsApi } from '../../api/productionCallsheets';
-import { ProductionCallSheet, ProductionShot, ShotStatus } from '../../types';
+import { ProductionCallSheet, ProductionShot, ShotStatus, Contact, WeatherData } from '../../types';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import api from '../../api/client';
 import toast from 'react-hot-toast';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── constants ──────────────────────────────────────────────────────────────
 
-function toTime(isoUtc: string): string {
-  const d = new Date(isoUtc);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function addMinutes(timeStr: string, minutes: number): string {
-  const [h, m] = timeStr.split(':').map(Number);
-  const total = h * 60 + m + minutes;
-  const nh = Math.floor(((total % 1440) + 1440) % 1440 / 60);
-  const nm = ((total % 1440) + 1440) % 1440 % 60;
-  return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
-}
-
-async function fetchLightTimes(location: string, date: string): Promise<Partial<ProductionCallSheet>> {
-  // Step 1: geocode
-  const geoRes = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`
-  );
-  if (!geoRes.ok) throw new Error('Geocoding failed');
-  const geoData = await geoRes.json() as { results?: { latitude: number; longitude: number }[] };
-  const place = geoData.results?.[0];
-  if (!place) throw new Error(`Could not find location: ${location}`);
-
-  const { latitude, longitude } = place;
-
-  // Step 2: sunrise/sunset
-  const solarRes = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=sunrise,sunset&timezone=auto&start_date=${date}&end_date=${date}`
-  );
-  if (!solarRes.ok) throw new Error('Solar data fetch failed');
-  const solarData = await solarRes.json() as { daily?: { sunrise?: string[]; sunset?: string[] } };
-  const sunriseIso = solarData.daily?.sunrise?.[0];
-  const sunsetIso = solarData.daily?.sunset?.[0];
-  if (!sunriseIso || !sunsetIso) throw new Error('No solar data returned');
-
-  const sunriseTime = toTime(sunriseIso);
-  const sunsetTime = toTime(sunsetIso);
-
-  return {
-    sunrise: sunriseTime,
-    sunset: sunsetTime,
-    goldenHourAm: sunriseTime,
-    goldenHourPm: addMinutes(sunsetTime, -60),
-    blueHourAm: addMinutes(sunriseTime, -40),
-    blueHourPm: sunsetTime,
-  };
-}
+const CREW_TITLES = ['Producer', 'Photographer', 'Photographer Assistant', 'Interior Stylist', 'Videographer', 'Assistant'];
+const CLIENT_TITLES = ['Creative Director', 'Project Manager', 'Account Manager', 'On Site Contact'];
 
 // ─── section wrapper ────────────────────────────────────────────────────────
 
@@ -83,13 +40,9 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   );
 }
 
-// ─── field grid ────────────────────────────────────────────────────────────
-
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>;
 }
-
-// ─── time input ─────────────────────────────────────────────────────────────
 
 function TimeInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -104,8 +57,6 @@ function TimeInput({ label, value, onChange }: { label: string; value: string; o
     </div>
   );
 }
-
-// ─── status badge ───────────────────────────────────────────────────────────
 
 const STATUS_COLOURS: Record<ShotStatus, string> = {
   PENDING: 'bg-gray-100 text-gray-600',
@@ -122,6 +73,7 @@ export default function CallSheetEditPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [fetchingLight, setFetchingLight] = useState(false);
+  const [lightWarning, setLightWarning] = useState<string | null>(null);
 
   const { data: sheet, isLoading } = useQuery({
     queryKey: ['production-callsheet', id],
@@ -130,12 +82,21 @@ export default function CallSheetEditPage() {
 
   const [form, setForm] = useState<Partial<ProductionCallSheet>>({});
   const [formLoaded, setFormLoaded] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
 
   // Merge server data into local form once (on load)
   if (sheet && !formLoaded) {
     setForm(sheet);
+    setContacts((sheet.contacts as Contact[]) ?? []);
+    setWeather((sheet.weatherData as WeatherData) ?? null);
     setFormLoaded(true);
   }
+
+  // Keep weather display in sync with form.weatherData
+  useEffect(() => {
+    if (form.weatherData && !weather) setWeather(form.weatherData as WeatherData);
+  }, [form.weatherData, weather]);
 
   const set = useCallback((key: keyof ProductionCallSheet, value: string | null) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -144,7 +105,7 @@ export default function CallSheetEditPage() {
   const saveForm = async () => {
     setSaving(true);
     try {
-      await productionCsApi.update(id!, form);
+      await productionCsApi.update(id!, { ...form, contacts, weatherData: weather });
       qc.invalidateQueries({ queryKey: ['production-callsheet', id] });
       qc.invalidateQueries({ queryKey: ['production-callsheets'] });
       toast.success('Saved');
@@ -190,19 +151,41 @@ export default function CallSheetEditPage() {
       return;
     }
     setFetchingLight(true);
+    setLightWarning(null);
     try {
-      const times = await fetchLightTimes(loc, date);
-      setForm((f) => ({ ...f, ...times }));
-      toast.success('Light times auto-populated');
+      // Step 1: Geocode location (Open-Meteo geocoding — lightweight, public, no CORS issue)
+      const geoRes = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(loc)}&count=1&language=en&format=json`
+      );
+      if (!geoRes.ok) throw new Error('Geocoding request failed');
+      const geoData = await geoRes.json() as { results?: { latitude: number; longitude: number; name: string }[] };
+      const place = geoData.results?.[0];
+      if (!place) throw new Error(`Location not found: ${loc}`);
+
+      // Step 2: Fetch sun times + weather via backend proxy (avoids CORS issues with some API calls)
+      const result = await productionCsApi.fetchSunTimes(place.latitude, place.longitude, date);
+
+      setForm((f) => ({
+        ...f,
+        sunrise: result.sunrise,
+        sunset: result.sunset,
+        goldenHourAm: result.goldenHourAm,
+        goldenHourPm: result.goldenHourPm,
+        blueHourAm: result.blueHourAm,
+        blueHourPm: result.blueHourPm,
+      }));
+      setWeather(result.weather);
+      toast.success('Light times and weather populated');
     } catch (e: unknown) {
-      toast.error((e as Error).message || 'Could not fetch light times. Enter manually.');
+      const msg = (e as Error).message || 'Could not fetch light times';
+      setLightWarning(msg);
+      toast.error(msg + ' — enter manually');
     } finally {
       setFetchingLight(false);
     }
   };
 
   const downloadFile = async (url: string, filename: string) => {
-    // Save form first so export has latest data
     await saveForm();
     try {
       const response = await api.get(url, { responseType: 'arraybuffer' });
@@ -228,6 +211,17 @@ export default function CallSheetEditPage() {
     } catch {
       toast.error('Export failed');
     }
+  };
+
+  // Contact helpers
+  const addContact = () => {
+    setContacts((c) => [...c, { id: uuidv4(), title: 'Photographer', name: '', phone: '', email: '' }]);
+  };
+  const updateContact = (idx: number, field: keyof Contact, value: string) => {
+    setContacts((c) => c.map((x, i) => i === idx ? { ...x, [field]: value } : x));
+  };
+  const removeContact = (idx: number) => {
+    setContacts((c) => c.filter((_, i) => i !== idx));
   };
 
   if (isLoading) {
@@ -284,7 +278,7 @@ export default function CallSheetEditPage() {
         </div>
       </div>
 
-      {/* 2a Production Details */}
+      {/* Production Details */}
       <Section title="Production Details" icon={<FileText className="w-4 h-4" />}>
         <FieldGrid>
           <Input
@@ -319,16 +313,79 @@ export default function CallSheetEditPage() {
           <textarea
             value={form.generalNotes ?? ''}
             onChange={(e) => set('generalNotes', e.target.value || null)}
-            rows={3}
+            rows={4}
             placeholder="Any general notes for the day…"
             className="mt-1 w-full px-3 py-2 text-sm border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#1A1A2E] resize-y"
           />
         </div>
       </Section>
 
-      {/* 2b Light & Weather */}
+      {/* Contacts */}
+      <Section title="Crew & Client Contacts" icon={<Users className="w-4 h-4" />}>
+        {contacts.length === 0 ? (
+          <p className="text-sm text-gray-400 mb-3">No contacts added. Use the button below to add crew and client contacts.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-5 mb-3">
+            <table className="w-full text-sm">
+              <thead className="bg-[#1A1A2E] text-white text-xs">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium w-44">Title</th>
+                  <th className="px-3 py-2 text-left font-medium">Name</th>
+                  <th className="px-3 py-2 text-left font-medium">Phone</th>
+                  <th className="px-3 py-2 text-left font-medium">Email</th>
+                  <th className="px-3 py-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {contacts.map((c, i) => (
+                  <tr key={c.id} className={i % 2 === 0 ? '' : 'bg-gray-50 dark:bg-gray-800/50'}>
+                    <td className="px-1 py-1">
+                      <select
+                        value={c.title}
+                        onChange={(e) => updateContact(i, 'title', e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border border-transparent hover:border-gray-300 focus:border-[#1A1A2E] focus:outline-none rounded bg-transparent"
+                      >
+                        <optgroup label="Crew">
+                          {CREW_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </optgroup>
+                        <optgroup label="Client">
+                          {CLIENT_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </optgroup>
+                      </select>
+                    </td>
+                    {(['name', 'phone', 'email'] as const).map((field) => (
+                      <td key={field} className="px-1 py-1">
+                        <input
+                          className="px-2 py-1.5 text-xs bg-transparent border border-transparent hover:border-gray-300 focus:border-[#1A1A2E] focus:outline-none rounded w-full"
+                          value={c[field]}
+                          onChange={(e) => updateContact(i, field, e.target.value)}
+                          placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+                          type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-1 py-1 text-right">
+                      <button
+                        onClick={() => removeContact(i)}
+                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Button size="sm" variant="secondary" onClick={addContact}>
+          <Plus className="w-3.5 h-3.5" /> Add Contact
+        </Button>
+      </Section>
+
+      {/* Light & Weather */}
       <Section title="Light & Weather Times" icon={<Sun className="w-4 h-4" />}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <p className="text-xs text-gray-500">Enter manually or auto-populate from location and date.</p>
           <Button
             variant="secondary"
@@ -339,6 +396,14 @@ export default function CallSheetEditPage() {
             <RefreshCw className="w-3.5 h-3.5" /> Auto-populate
           </Button>
         </div>
+
+        {lightWarning && (
+          <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span>{lightWarning} — you can enter the times manually below.</span>
+          </div>
+        )}
+
         <FieldGrid>
           <TimeInput label="Sunrise" value={form.sunrise ?? ''} onChange={(v) => set('sunrise', v || null)} />
           <TimeInput label="Sunset" value={form.sunset ?? ''} onChange={(v) => set('sunset', v || null)} />
@@ -347,9 +412,58 @@ export default function CallSheetEditPage() {
           <TimeInput label="Blue Hour AM" value={form.blueHourAm ?? ''} onChange={(v) => set('blueHourAm', v || null)} />
           <TimeInput label="Blue Hour PM" value={form.blueHourPm ?? ''} onChange={(v) => set('blueHourPm', v || null)} />
         </FieldGrid>
+
+        {/* Weather forecast card */}
+        {weather && (
+          <div className="mt-5 border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-900">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Weather Forecast</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {weather.description && (
+                <div className="flex items-center gap-2">
+                  <Sun className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Conditions</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{weather.description}</p>
+                  </div>
+                </div>
+              )}
+              {(weather.tempMax != null || weather.tempMin != null) && (
+                <div className="flex items-center gap-2">
+                  <Thermometer className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Temperature</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {weather.tempMin != null ? `${weather.tempMin}°` : ''}
+                      {weather.tempMin != null && weather.tempMax != null ? ' – ' : ''}
+                      {weather.tempMax != null ? `${weather.tempMax}°C` : ''}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {weather.precipitation != null && (
+                <div className="flex items-center gap-2">
+                  <CloudRain className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Precipitation</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{weather.precipitation} mm</p>
+                  </div>
+                </div>
+              )}
+              {weather.windSpeed != null && (
+                <div className="flex items-center gap-2">
+                  <Wind className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Wind Speed</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{weather.windSpeed} km/h</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Section>
 
-      {/* 2c Daily Logistics */}
+      {/* Daily Logistics */}
       <Section title="Daily Logistics" icon={<Clock className="w-4 h-4" />}>
         <FieldGrid>
           <TimeInput label="Start of Day" value={form.startOfDay ?? ''} onChange={(v) => set('startOfDay', v || null)} />
@@ -360,9 +474,9 @@ export default function CallSheetEditPage() {
         </FieldGrid>
       </Section>
 
-      {/* 2d Shot List */}
+      {/* Shot List */}
       <Section title={`Shot List (${sheet.shots.length})`} icon={<List className="w-4 h-4" />}>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <Button size="sm" onClick={() => addShotMutation.mutate()} loading={addShotMutation.isPending}>
             <Plus className="w-3.5 h-3.5" /> Add Shot
           </Button>
@@ -385,7 +499,7 @@ export default function CallSheetEditPage() {
           >
             <Upload className="w-3.5 h-3.5" /> Import xlsx
           </Button>
-          <p className="text-xs text-gray-400 ml-1">
+          <p className="text-xs text-gray-400">
             Columns: Shooting Location, Description, Timing, Notes
           </p>
         </div>
@@ -506,7 +620,11 @@ function ShotRow({
       <td className="px-1 py-1">
         <select
           value={merged.status}
-          onChange={(e) => { const v = e.target.value as ShotStatus; setLocal((l) => ({ ...l, status: v })); onUpdate({ status: v }); }}
+          onChange={(e) => {
+            const v = e.target.value as ShotStatus;
+            setLocal((l) => ({ ...l, status: v }));
+            onUpdate({ status: v });
+          }}
           className={`${cellClass} ${STATUS_COLOURS[merged.status as ShotStatus] ?? ''}`}
         >
           <option value="PENDING">Pending</option>

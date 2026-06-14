@@ -312,6 +312,8 @@ model ProductionCallSheet {
   lunchTime      String?
   dinnerTime     String?
   endOfDay       String?
+  contacts       Json?    @default("[]")
+  weatherData    Json?
   organisation   Organisation @relation(fields: [organisationId], references: [id])
   organisationId String
   createdBy      User     @relation(fields: [createdById], references: [id])

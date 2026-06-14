@@ -76,6 +76,8 @@ async function applySchemaPatches() {
     ['ProductionCallSheet org fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_organisationId_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_organisationId_fkey" FOREIGN KEY ("organisationId") REFERENCES "Organisation"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
     ['ProductionCallSheet user fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_createdById_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
     ['ProductionShot cs fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionShot_callSheetId_fkey') THEN ALTER TABLE "ProductionShot" ADD CONSTRAINT "ProductionShot_callSheetId_fkey" FOREIGN KEY ("callSheetId") REFERENCES "ProductionCallSheet"("id") ON DELETE CASCADE ON UPDATE CASCADE; END IF; END $$`],
+    ['ProductionCallSheet.contacts', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "contacts" JSONB NOT NULL DEFAULT '[]'`],
+    ['ProductionCallSheet.weatherData', `ALTER TABLE "ProductionCallSheet" ADD COLUMN IF NOT EXISTS "weatherData" JSONB`],
   ];
 
   for (const [name, sql] of patches) {

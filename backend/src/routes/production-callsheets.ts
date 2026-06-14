@@ -13,6 +13,22 @@ const router = Router();
 router.use(authenticate);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+const contactSchema = z.object({
+  id: z.string(),
+  title: z.string().optional().nullable(),
+  name: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+});
+
+const weatherDataSchema = z.object({
+  description: z.string().optional().nullable(),
+  tempMax: z.number().optional().nullable(),
+  tempMin: z.number().optional().nullable(),
+  precipitation: z.number().optional().nullable(),
+  windSpeed: z.number().optional().nullable(),
+}).optional().nullable();
+
 const callSheetSchema = z.object({
   projectName: z.string().min(1),
   client: z.string().optional().nullable(),
@@ -30,6 +46,8 @@ const callSheetSchema = z.object({
   lunchTime: z.string().optional().nullable(),
   dinnerTime: z.string().optional().nullable(),
   endOfDay: z.string().optional().nullable(),
+  contacts: z.array(contactSchema).optional().nullable(),
+  weatherData: weatherDataSchema,
 });
 
 const shotSchema = z.object({
@@ -47,6 +65,81 @@ async function getSheet(id: string, organisationId: string) {
     include: { shots: { orderBy: { sortOrder: 'asc' } } },
   });
 }
+
+// WMO weather code descriptions
+const WMO: Record<number, string> = {
+  0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
+  45:'Fog',48:'Icy fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
+  61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',
+  77:'Snow grains',80:'Light showers',81:'Showers',82:'Heavy showers',
+  85:'Snow showers',86:'Heavy snow showers',95:'Thunderstorm',
+  96:'Thunderstorm w/ hail',99:'Heavy thunderstorm w/ hail',
+};
+
+function parseIsoTime(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function shiftTime(t: string, mins: number): string {
+  const [h, m] = t.split(':').map(Number);
+  const total = ((h * 60 + m + mins) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+}
+
+// Sun times + weather proxy (avoids CORS issues on some clients)
+// Must come BEFORE /:id route
+router.get('/sun-times', async (req: Request, res: Response): Promise<void> => {
+  const { lat, lng, date } = req.query as Record<string, string>;
+  if (!lat || !lng || !date) {
+    res.status(400).json({ error: 'lat, lng, and date are required' });
+    return;
+  }
+  try {
+    const url = [
+      'https://api.open-meteo.com/v1/forecast',
+      `?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`,
+      `&daily=sunrise,sunset,weathercode,precipitation_sum,windspeed_10m_max,temperature_2m_max,temperature_2m_min`,
+      `&timezone=auto&start_date=${encodeURIComponent(date)}&end_date=${encodeURIComponent(date)}`,
+    ].join('');
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Open-Meteo ${resp.status}`);
+    const data = await resp.json() as {
+      daily?: {
+        sunrise?: string[]; sunset?: string[];
+        weathercode?: number[];
+        precipitation_sum?: number[];
+        windspeed_10m_max?: number[];
+        temperature_2m_max?: number[];
+        temperature_2m_min?: number[];
+      }
+    };
+
+    const sunriseIso = data.daily?.sunrise?.[0];
+    const sunsetIso  = data.daily?.sunset?.[0];
+    const sunriseTime = sunriseIso ? parseIsoTime(sunriseIso) : null;
+    const sunsetTime  = sunsetIso  ? parseIsoTime(sunsetIso)  : null;
+    const wCode = data.daily?.weathercode?.[0];
+
+    res.json({
+      sunrise:     sunriseTime,
+      sunset:      sunsetTime,
+      goldenHourAm: sunriseTime,
+      goldenHourPm: sunsetTime ? shiftTime(sunsetTime, -60) : null,
+      blueHourAm:   sunriseTime ? shiftTime(sunriseTime, -40) : null,
+      blueHourPm:   sunsetTime,
+      weather: {
+        description:   wCode !== undefined ? (WMO[wCode] ?? `Code ${wCode}`) : null,
+        tempMax:       data.daily?.temperature_2m_max?.[0] != null ? Math.round(data.daily.temperature_2m_max[0]!) : null,
+        tempMin:       data.daily?.temperature_2m_min?.[0] != null ? Math.round(data.daily.temperature_2m_min[0]!) : null,
+        precipitation: data.daily?.precipitation_sum?.[0] ?? null,
+        windSpeed:     data.daily?.windspeed_10m_max?.[0] != null ? Math.round(data.daily.windspeed_10m_max[0]!) : null,
+      },
+    });
+  } catch (err) {
+    console.error('Sun-times proxy error:', err);
+    res.status(502).json({ error: 'Could not fetch sun/weather data' });
+  }
+});
 
 // List
 router.get('/', async (req: Request, res: Response): Promise<void> => {

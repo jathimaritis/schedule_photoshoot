@@ -1,4 +1,20 @@
 export type Role = 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER';
+
+export interface Contact {
+  id: string;
+  title: string;
+  name: string;
+  phone: string;
+  email: string;
+}
+
+export interface WeatherData {
+  description: string | null;
+  tempMax: number | null;
+  tempMin: number | null;
+  precipitation: number | null;
+  windSpeed: number | null;
+}
 export type ModuleAccess = 'NONE' | 'SCHEDULER' | 'CALL_SHEET' | 'BOTH';
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ShotStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE';
@@ -54,6 +70,8 @@ export interface ProductionCallSheet {
   lunchTime?: string | null;
   dinnerTime?: string | null;
   endOfDay?: string | null;
+  contacts?: Contact[];
+  weatherData?: WeatherData | null;
   organisationId: string;
   createdById: string;
   createdAt: string;
