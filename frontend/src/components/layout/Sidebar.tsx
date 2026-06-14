@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useUiStore } from '../../stores/uiStore';
 import { projectsApi } from '../../api/projects';
 import { authApi } from '../../api/auth';
+import { User } from '../../types';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-400',
@@ -13,6 +14,14 @@ const STATUS_COLORS: Record<string, string> = {
   COMPLETED: 'bg-blue-500',
   ARCHIVED: 'bg-gray-300',
 };
+
+function canScheduler(user: User) {
+  return user.role === 'ADMIN' || user.moduleAccess === 'SCHEDULER' || user.moduleAccess === 'BOTH';
+}
+
+function canCallSheet(user: User) {
+  return user.role === 'ADMIN' || user.moduleAccess === 'CALLSHEET' || user.moduleAccess === 'BOTH';
+}
 
 export default function Sidebar() {
   const { id: currentProjectId } = useParams();
@@ -22,15 +31,14 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const [schedulerOpen, setSchedulerOpen] = useState(true);
 
-  const isAdmin = user?.isAdmin === true || user?.role === 'OWNER' || user?.role === 'ADMIN';
-  const isApproved = user?.status === 'APPROVED' || isAdmin;
-  const canScheduler = isAdmin || (isApproved && user?.accessScheduler === true);
-  const canCallSheet = isAdmin || (isApproved && user?.accessCallSheet === true);
+  const isAdmin = user?.role === 'ADMIN';
+  const showScheduler = user ? canScheduler(user) : false;
+  const showCallSheet = user ? canCallSheet(user) : false;
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsApi.list(),
-    enabled: !!user && canScheduler,
+    enabled: !!user && showScheduler,
   });
 
   const handleLogout = async () => {
@@ -68,7 +76,7 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin">
         {/* Scheduler section */}
-        {canScheduler && (
+        {showScheduler && (
           <div className="px-3 mb-1">
             <button
               onClick={() => setSchedulerOpen((o) => !o)}
@@ -89,7 +97,6 @@ export default function Sidebar() {
                   <FolderOpen className="w-4 h-4" /> All Projects
                 </NavLink>
 
-                {/* Current project nav */}
                 {currentProjectId && (
                   <div className="mt-1 ml-1 border-l border-white/10 pl-2">
                     {[
@@ -112,7 +119,6 @@ export default function Sidebar() {
                   </div>
                 )}
 
-                {/* Recent projects */}
                 {projects && projects.length > 0 && (
                   <div className="mt-2">
                     <p className="text-xs text-white/30 uppercase tracking-wider px-3 mb-1">Recent</p>
@@ -133,8 +139,8 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Call Sheet standalone module */}
-        {canCallSheet && (
+        {/* Call Sheet module */}
+        {showCallSheet && (
           <div className="px-3 mt-2">
             <p className="text-xs text-white/40 uppercase tracking-wider px-1 mb-1">Call Sheet</p>
             <NavLink
@@ -169,14 +175,16 @@ export default function Sidebar() {
         >
           <Settings className="w-4 h-4" /> Settings
         </NavLink>
-        <NavLink
-          to="/settings/users"
-          className={({ isActive }) =>
-            `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`
-          }
-        >
-          <Users className="w-4 h-4" /> Team
-        </NavLink>
+        {isAdmin && (
+          <NavLink
+            to="/settings/users"
+            className={({ isActive }) =>
+              `flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'}`
+            }
+          >
+            <Users className="w-4 h-4" /> Team
+          </NavLink>
+        )}
 
         {/* User info */}
         <div className="mt-2 border-t border-white/10 pt-2">

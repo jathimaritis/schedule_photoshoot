@@ -26,11 +26,13 @@ let refreshQueue: Array<(token: string) => void> = [];
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // If the server says PENDING or RESTRICTED, update the local user state immediately
     const code = error.response?.data?.code as string | undefined;
-    if (error.response?.status === 403 && (code === 'PENDING' || code === 'RESTRICTED')) {
-      const { useAuthStore } = await import('../stores/authStore');
-      useAuthStore.getState().updateUser({ status: code as 'PENDING' | 'RESTRICTED' });
+
+    // Deactivated account — don't refresh, go straight to login
+    if (code === 'DEACTIVATED') {
+      setAccessToken(null);
+      window.location.href = '/login?deactivated=true';
+      return Promise.reject(error);
     }
 
     const original = error.config;

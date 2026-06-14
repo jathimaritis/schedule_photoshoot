@@ -1,5 +1,8 @@
-export type Role = 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER';
-export type UserStatus = 'PENDING' | 'APPROVED' | 'RESTRICTED';
+export type Role = 'ADMIN' | 'MEMBER';
+export type ModuleAccess = 'SCHEDULER' | 'CALLSHEET' | 'BOTH';
+export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+export type ShotStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE';
+export type FieldGroup = 'CREW' | 'CLIENT' | 'LOGISTICS';
 
 export interface Contact {
   id: string;
@@ -16,10 +19,6 @@ export interface WeatherData {
   precipitation: number | null;
   windSpeed: number | null;
 }
-export type ModuleAccess = 'NONE' | 'SCHEDULER' | 'CALL_SHEET' | 'BOTH';
-export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
-export type ShotStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE';
-export type FieldGroup = 'CREW' | 'CLIENT' | 'LOGISTICS';
 
 export interface Organisation {
   id: string;
@@ -45,16 +44,21 @@ export interface User {
   email: string;
   role: Role;
   moduleAccess: ModuleAccess;
-  status?: UserStatus;
-  accessScheduler?: boolean;
-  accessCallSheet?: boolean;
-  isAdmin?: boolean;
   avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
   lastLoginAt?: string | null;
   organisationId: string;
   organisation?: Organisation;
+}
+
+export interface InviteToken {
+  id: string;
+  email: string;
+  moduleAccess: ModuleAccess;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string | null;
 }
 
 export interface ProductionCallSheet {
@@ -95,14 +99,6 @@ export interface ProductionShot {
   status: ShotStatus;
   sortOrder: number;
   callSheetId: string;
-}
-
-export interface InviteToken {
-  id: string;
-  email: string;
-  role: Role;
-  expiresAt: string;
-  createdAt: string;
 }
 
 export interface Project {
