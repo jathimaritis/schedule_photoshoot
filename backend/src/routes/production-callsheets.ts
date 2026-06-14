@@ -572,27 +572,47 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
 
     // Shot list
     section('SHOT LIST');
-    const cols = [pageW * 0.19, pageW * 0.31, pageW * 0.1, pageW * 0.28, pageW * 0.12];
+    const cols = [pageW * 0.21, pageW * 0.33, pageW * 0.1, pageW * 0.28, pageW * 0.08];
     const colX = cols.reduce<number[]>((acc, _, i) => {
       acc.push(i === 0 ? 40 : acc[i - 1] + cols[i - 1]);
       return acc;
     }, []);
-    const hdrs = ['Shooting Location', 'Description', 'Timing', 'Notes', 'Status'];
+    const hdrs = ['Shooting Location', 'Description', 'Timing', 'Notes', 'Done'];
     checkPage();
     doc.rect(40, y, pageW, 16).fill(`rgb(${PURPLE_RGB.join(',')})`);
     hdrs.forEach((h, i) => {
       doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold')
-        .text(h, colX[i] + 2, y + 4, { width: cols[i] - 4, align: 'center' });
+        .text(h, colX[i] + 2, y + 4, { width: cols[i] - 4, align: i === 4 ? 'center' : 'center' });
     });
     y += 18;
+
+    const drawCheckbox = (cx: number, cy: number, done: boolean) => {
+      const boxSize = 7;
+      const bx = cx + (cols[4] - boxSize) / 2; // centre in column
+      const by = cy + (16 - boxSize) / 2;
+      doc.save();
+      doc.lineWidth(0.75);
+      doc.rect(bx, by, boxSize, boxSize).stroke('#555');
+      if (done) {
+        // Checkmark: ╲ from top-left-ish to middle-bottom, then up-right to top-right-ish
+        doc.moveTo(bx + 1, by + 3.5)
+           .lineTo(bx + 3, by + 6)
+           .lineTo(bx + 6, by + 1)
+           .stroke('#1a1a2e');
+      }
+      doc.restore();
+    };
 
     sheet.shots.forEach((s, i) => {
       checkPage(18);
       doc.rect(40, y, pageW, 16).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
-      [s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? '', s.status].forEach((v, j) => {
+      // Text columns (0-3)
+      [s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? ''].forEach((v, j) => {
         doc.fillColor('#333').fontSize(7.5).font('Helvetica')
           .text(v, colX[j] + 2, y + 4, { width: cols[j] - 4, lineBreak: false });
       });
+      // Checkbox column (4)
+      drawCheckbox(colX[4], y, s.status === 'DONE');
       y += 16;
     });
 

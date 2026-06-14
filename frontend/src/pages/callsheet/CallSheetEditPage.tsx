@@ -9,7 +9,7 @@ import {
 import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { productionCsApi } from '../../api/productionCallsheets';
-import { ProductionCallSheet, ProductionShot, ShotStatus, Contact, WeatherData } from '../../types';
+import { ProductionCallSheet, ProductionShot, Contact, WeatherData } from '../../types';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import api from '../../api/client';
@@ -57,12 +57,6 @@ function TimeInput({ label, value, onChange }: { label: string; value: string; o
     </div>
   );
 }
-
-const STATUS_COLOURS: Record<ShotStatus, string> = {
-  PENDING: 'bg-gray-100 text-gray-600',
-  IN_PROGRESS: 'bg-blue-100 text-blue-700',
-  DONE: 'bg-green-100 text-green-700',
-};
 
 // ─── main page ──────────────────────────────────────────────────────────────
 
@@ -513,7 +507,7 @@ export default function CallSheetEditPage() {
                   <th className="px-3 py-2 text-left font-medium">Shot Description</th>
                   <th className="px-3 py-2 text-left font-medium w-24">Timing</th>
                   <th className="px-3 py-2 text-left font-medium">Notes</th>
-                  <th className="px-3 py-2 text-left font-medium w-28">Status</th>
+                  <th className="px-3 py-2 text-center font-medium w-14">Done</th>
                   <th className="px-3 py-2 w-8" />
                 </tr>
               </thead>
@@ -613,20 +607,17 @@ function ShotRow({
           placeholder="Notes"
         />
       </td>
-      <td className="px-1 py-1">
-        <select
-          value={merged.status}
+      <td className="px-1 py-1 text-center">
+        <input
+          type="checkbox"
+          checked={merged.status === 'DONE'}
           onChange={(e) => {
-            const v = e.target.value as ShotStatus;
+            const v = e.target.checked ? 'DONE' : 'PENDING';
             setLocal((l) => ({ ...l, status: v }));
             onUpdate({ status: v });
           }}
-          className={`${cellClass} ${STATUS_COLOURS[merged.status as ShotStatus] ?? ''}`}
-        >
-          <option value="PENDING">Pending</option>
-          <option value="IN_PROGRESS">In Progress</option>
-          <option value="DONE">Done</option>
-        </select>
+          className="w-4 h-4 accent-[#1A1A2E] cursor-pointer"
+        />
       </td>
       <td className="px-1 py-1 text-right">
         <button
