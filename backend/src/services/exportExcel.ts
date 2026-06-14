@@ -12,11 +12,12 @@ const BORDER_GREY = 'D0D0D0';
 const BODY_TEXT = '1A1A1A';
 
 // Brand palette (call sheet)
-const BRAND_DARK  = '2C2318';
-const BRAND_MID   = '7A5C3A';
-const BRAND_TAN   = 'B89A7A';
-const BRAND_CREAM = 'F5F0EB';
-const BRAND_WHITE = 'FAFAF8';
+const BRAND_DARK    = '2C2318';
+const BRAND_MID     = '7A5C3A';
+const BRAND_TAN     = 'B89A7A';
+const BRAND_CREAM   = 'F5F0EB';
+const BRAND_OFFWHITE = 'FAFAF8';
+const BRAND_WHITE   = 'FFFFFF';
 
 function hex(color: string): string {
   return color.startsWith('#') ? color.slice(1) : color;
@@ -328,349 +329,333 @@ async function addScheduleSheet(wb: ExcelJS.Workbook, project: ScheduleProject) 
 }
 
 function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: ShootingDayData, cs: CallSheetData) {
-  const wsName = `Day ${day.dayNumber}`;
-  const ws = wb.addWorksheet(wsName);
+  const ws = wb.addWorksheet(`Day ${day.dayNumber}`);
 
-  // Column layout serves both field blocks and the shot list.
-  // A: label / shot#   B: value / description   C: spacer / location
-  // D: label / timing  E: value / notes         F: spacer / status
+  // ── Column widths ─────────────────────────────────────────────────────────
   ws.columns = [
-    { width: 20 },  // A: label / #
-    { width: 22 },  // B: value / description
-    { width: 14 },  // C: spacer / location
-    { width: 18 },  // D: label / timing
-    { width: 20 },  // E: value / notes
-    { width: 9 },   // F: spacer / status
+    { width: 6 },   // A: # / label
+    { width: 28 },  // B: description / value
+    { width: 22 },  // C: location / label
+    { width: 14 },  // D: timing / label
+    { width: 22 },  // E: notes / value
+    { width: 10 },  // F: status / spacer
   ];
 
-  ws.pageSetup = {
-    orientation: 'landscape',
-    fitToPage: true,
-    fitToWidth: 1,
-    fitToHeight: 0,
-    showGridLines: false,
+  // ── Print settings ────────────────────────────────────────────────────────
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, showGridLines: false };
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const c = (hex: string): string => `FF${hex.replace('#', '')}`;
+  const bg = (hex: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: c(hex) } });
+  const f = (size: number, color: string, bold = false, italic = false): Partial<ExcelJS.Font> =>
+    ({ name: 'Calibri', size, bold, italic, color: { argb: c(color) } });
+
+  // Write to all 6 cells of a row without merging.
+  const setRow = (
+    row: ExcelJS.Row,
+    cells: [unknown, unknown, unknown, unknown, unknown, unknown],
+    bgCol: string,
+    fontSpec: Partial<ExcelJS.Font>,
+    height: number,
+    wrap = false,
+  ) => {
+    row.height = height;
+    cells.forEach((val, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = val as ExcelJS.CellValue;
+      cell.fill  = bg(bgCol);
+      cell.font  = fontSpec;
+      if (wrap) cell.alignment = { wrapText: true, vertical: 'top' };
+    });
   };
 
-  const type = project.photographyTypes.find((t) => t.id === day.photographyTypeId);
-  const typeColour = type?.hexColour ?? BRAND_DARK;
+  // Merge a row A:F (only for purely decorative rows with a single value in A).
+  const mergeRow = (row: ExcelJS.Row, rowNum: number) => ws.mergeCells(`A${rowNum}:F${rowNum}`);
+
+  let rowNum = 1;
+
+  // ── Row 1: empty cream spacer (logo will overlay here) ───────────────────
+  const row1 = ws.addRow(['', '', '', '', '', '']);
+  mergeRow(row1, rowNum++);
+  row1.height = 40;
+  row1.getCell(1).fill = bg(BRAND_CREAM);
+
+  // ── Row 2: Project name ───────────────────────────────────────────────────
+  const row2 = ws.addRow([project.name, '', '', '', '', '']);
+  mergeRow(row2, rowNum++);
+  row2.height = 24;
+  row2.getCell(1).fill = bg(BRAND_CREAM);
+  row2.getCell(1).font = f(14, BRAND_DARK, true);
+  row2.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+
+  // ── Row 3: Subtitle ───────────────────────────────────────────────────────
+  const row3 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, '', '', '', '', '']);
+  mergeRow(row3, rowNum++);
+  row3.height = 18;
+  row3.getCell(1).fill = bg(BRAND_CREAM);
+  row3.getCell(1).font = f(10, BRAND_MID, true);
+  row3.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+
+  // ── Row 4: Date ───────────────────────────────────────────────────────────
   const dateStr = format(new Date(day.calendarDate), 'EEEE, dd MMMM yyyy');
-  let rowIdx = 1;
+  const row4 = ws.addRow([dateStr, '', '', '', '', '']);
+  mergeRow(row4, rowNum++);
+  row4.height = 18;
+  row4.getCell(1).fill = bg(BRAND_CREAM);
+  row4.getCell(1).font = f(10, BRAND_DARK);
+  row4.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
-  const thinBorder = (color = BRAND_TAN): Partial<ExcelJS.Borders> => ({
-    bottom: { style: 'thin', color: { argb: `FF${color}` } },
-  });
+  // ── Row 5: Location ───────────────────────────────────────────────────────
+  const row5 = ws.addRow([cs.location ? `📍 ${cs.location}` : '', '', '', '', '', '']);
+  mergeRow(row5, rowNum++);
+  row5.height = 18;
+  row5.getCell(1).fill = bg(BRAND_CREAM);
+  row5.getCell(1).font = f(10, BRAND_DARK);
+  row5.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
-  const mergeRow = (n: number) => ws.mergeCells(`A${n}:F${n}`);
+  // ── Row 6: General notes ──────────────────────────────────────────────────
+  const row6 = ws.addRow([cs.notes ?? '', '', '', '', '', '']);
+  mergeRow(row6, rowNum++);
+  row6.height = 40;
+  row6.getCell(1).fill = bg(BRAND_OFFWHITE);
+  row6.getCell(1).font = f(9, BRAND_DARK);
+  row6.getCell(1).alignment = { wrapText: true, vertical: 'top', indent: 1 };
 
-  // ── Logo — row 1, left-aligned, proportional aspect ratio ───────────────
-  if (project.logoUrl) {
-    try {
-      const m = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
-      if (m) {
-        const ext = m[1] === 'webp' ? 'png' : m[1] as 'png' | 'jpeg' | 'gif';
-        const base64 = m[2];
+  // ── Field sections ────────────────────────────────────────────────────────
 
-        // Try to read PNG dimensions so we can maintain aspect ratio.
-        // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian).
-        let logoWidth = 160;
-        const logoHeight = 40;
-        if (m[1] === 'png') {
-          try {
-            const hdr = Buffer.from(base64.slice(0, 32), 'base64');
-            if (hdr[0] === 0x89 && hdr[1] === 0x50) { // valid PNG signature
-              const imgW = hdr.readUInt32BE(16);
-              const imgH = hdr.readUInt32BE(20);
-              if (imgW > 0 && imgH > 0) logoWidth = Math.round(logoHeight * (imgW / imgH));
-            }
-          } catch { /* use default */ }
-        }
-
-        const imageId = wb.addImage({ base64, extension: ext });
-        // tl col:0 = left edge of col A; row:0 = top of row 1 (the cream header row)
-        ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: logoWidth, height: logoHeight } });
-      }
-    } catch { /* skip */ }
+  const fieldsByGroup: Record<string, typeof cs.fields> = { CREW: [], CLIENT: [], LOGISTICS: [] };
+  for (const field of cs.fields.filter((fld) => fld.isVisible)) {
+    const g = field.fieldGroup as 'CREW' | 'CLIENT' | 'LOGISTICS';
+    if (fieldsByGroup[g]) fieldsByGroup[g].push(field);
   }
 
-  // ── Header block ──────────────────────────────────────────────────────────
-
-  // Merged header rows — these are pure title/decoration with no data values in B-F,
-  // so A:F merging is safe here.
-
-  // Row 1: Project name
-  const r1 = ws.addRow([project.name.toUpperCase(), '', '', '', '', '']);
-  mergeRow(rowIdx);
-  r1.height = 28;
-  r1.getCell(1).fill = fill(BRAND_CREAM);
-  r1.getCell(1).font = font({ bold: true, size: 13, color: { argb: `FF${BRAND_DARK}` } });
-  r1.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-  rowIdx++;
-
-  // Row 2: Title bar
-  const r2 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, '', '', '', '', '']);
-  mergeRow(rowIdx);
-  r2.height = 26;
-  r2.getCell(1).fill = fill(BRAND_DARK);
-  r2.getCell(1).font = wfont({ bold: true, size: 12 });
-  r2.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-  rowIdx++;
-
-  // Row 3: Date + type colour bar
-  const dateLabel = `${dateStr}${type ? `  |  ${type.name}` : ''}`;
-  const r3 = ws.addRow([dateLabel, '', '', '', '', '']);
-  mergeRow(rowIdx);
-  r3.height = 22;
-  r3.getCell(1).fill = fill(typeColour);
-  r3.getCell(1).font = wfont({ bold: true });
-  r3.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-  rowIdx++;
-
-  // Row 4: Location
-  const locationText = cs.location ? `📍 ${cs.location}` : '';
-  const r4 = ws.addRow([locationText, '', '', '', '', '']);
-  mergeRow(rowIdx);
-  r4.height = 20;
-  r4.getCell(1).fill = fill(BRAND_CREAM);
-  r4.getCell(1).font = font({ color: { argb: `FF${BRAND_MID}` } });
-  r4.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-  rowIdx++;
-
-  // Row 5: Notes (conditional)
-  if (cs.notes) {
-    const r5 = ws.addRow([cs.notes, '', '', '', '', '']);
-    mergeRow(rowIdx);
-    r5.height = 30;
-    r5.getCell(1).fill = fill(BRAND_CREAM);
-    r5.getCell(1).font = font({ italic: true, color: { argb: `FF${BRAND_DARK}` } });
-    r5.getCell(1).alignment = { wrapText: true, vertical: 'top', indent: 1 };
-    rowIdx++;
-  }
-
-  // ── Field blocks ──────────────────────────────────────────────────────────
-
-  const fieldsByGroup = { CREW: [] as typeof cs.fields, CLIENT: [] as typeof cs.fields, LOGISTICS: [] as typeof cs.fields };
-  for (const f of cs.fields.filter((f) => f.isVisible)) {
-    fieldsByGroup[f.fieldGroup as 'CREW' | 'CLIENT' | 'LOGISTICS'].push(f);
-  }
-
-  // Helper: write one field-data row — no merges, every cell written individually.
-  // Layout: A=label  B=value  C=spacer  D=label  E=value  F=spacer
-  const writeFieldRow = (f1Label: string, f1Value: string, f2Label: string, f2Value: string) => {
-    const row = ws.addRow([f1Label, f1Value, '', f2Label, f2Value, '']);
-    row.height = 20;
-    row.getCell(1).fill  = fill(BRAND_CREAM);
-    row.getCell(1).font  = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
-    row.getCell(2).fill  = fill(BRAND_WHITE);
-    row.getCell(2).font  = font();
-    row.getCell(3).fill  = fill(BRAND_CREAM);   // spacer
-    row.getCell(4).fill  = fill(BRAND_CREAM);
-    row.getCell(4).font  = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
-    row.getCell(5).fill  = fill(BRAND_WHITE);
-    row.getCell(5).font  = font();
-    row.getCell(6).fill  = fill(BRAND_CREAM);   // spacer
-    for (let c = 1; c <= 6; c++) row.getCell(c).border = thinBorder(BORDER_GREY);
-    rowIdx++;
-  };
-
-  const renderFieldBlock = (label: string, fields: typeof cs.fields, headerBg: string) => {
-    if (fields.length === 0) return;
-    // Section header — merged A:F, pure title row, no data values
-    const hRow = ws.addRow([label, '', '', '', '', '']);
-    mergeRow(rowIdx);
-    hRow.height = 18;
-    hRow.getCell(1).fill = fill(headerBg);
-    hRow.getCell(1).font = wfont({ bold: true });
-    hRow.getCell(1).alignment = { horizontal: 'center' };
-    rowIdx++;
-
-    // Data rows — two fields per row, no merges
-    for (let i = 0; i < fields.length; i += 2) {
-      const f1 = fields[i];
-      const f2 = fields[i + 1];
-      writeFieldRow(f1.label, f1.value ?? '', f2?.label ?? '', f2?.value ?? '');
+  const writeSectionHeader = (label: string) => {
+    // Write label into A only — no merge
+    const r = ws.addRow([label, '', '', '', '', '']);
+    r.height = 18;
+    for (let i = 1; i <= 6; i++) {
+      r.getCell(i).fill = bg(BRAND_CREAM);
+      r.getCell(i).font = f(9, BRAND_MID, true);
     }
+    rowNum++;
   };
 
-  renderFieldBlock('CREW', fieldsByGroup.CREW, BRAND_DARK);
-  renderFieldBlock('CLIENT', fieldsByGroup.CLIENT, BRAND_MID);
-  renderFieldBlock('DAILY LOGISTICS', fieldsByGroup.LOGISTICS, typeColour);
+  const writeDataRow = (a: string, b: string, d: string, e: string) => {
+    // A=label, B=value, C=empty, D=label, E=value, F=empty — NO MERGES
+    const r = ws.addRow([a, b, '', d, e, '']);
+    r.height = 18;
+    r.getCell(1).fill = bg(BRAND_CREAM); r.getCell(1).font = f(9, BRAND_DARK);
+    r.getCell(2).fill = bg(BRAND_OFFWHITE); r.getCell(2).font = f(9, BRAND_DARK);
+    r.getCell(3).fill = bg(BRAND_CREAM); r.getCell(3).font = f(9, BRAND_DARK);
+    r.getCell(4).fill = bg(BRAND_CREAM); r.getCell(4).font = f(9, BRAND_DARK);
+    r.getCell(5).fill = bg(BRAND_OFFWHITE); r.getCell(5).font = f(9, BRAND_DARK);
+    r.getCell(6).fill = bg(BRAND_CREAM); r.getCell(6).font = f(9, BRAND_DARK);
+    rowNum++;
+  };
+
+  // CREW
+  writeSectionHeader('CREW');
+  const crew = fieldsByGroup['CREW'];
+  for (let i = 0; i < crew.length; i += 2) {
+    writeDataRow(crew[i].label, crew[i].value ?? '', crew[i + 1]?.label ?? '', crew[i + 1]?.value ?? '');
+  }
+
+  // CLIENT
+  writeSectionHeader('CLIENT');
+  const client = fieldsByGroup['CLIENT'];
+  for (let i = 0; i < client.length; i += 2) {
+    writeDataRow(client[i].label, client[i].value ?? '', client[i + 1]?.label ?? '', client[i + 1]?.value ?? '');
+  }
+
+  // DAILY LOGISTICS — use fixed field-name lookup for the 5 standard slots
+  writeSectionHeader('DAILY LOGISTICS');
+  const logFields = fieldsByGroup['LOGISTICS'];
+  const logVal = (label: string) => logFields.find((f) => f.label.toLowerCase().includes(label.toLowerCase()))?.value ?? '';
+
+  // Row: Start of Day | val | Breakfast | val
+  writeDataRow('Start of Day', logVal('start'), 'Breakfast', logVal('breakfast'));
+  // Row: Lunch | val | Dinner | val
+  writeDataRow('Lunch', logVal('lunch'), 'Dinner', logVal('dinner'));
+  // Row: End of Day | val | (blank) | (blank) — NO MERGE, value in B
+  writeDataRow('End of Day', logVal('end'), '', '');
 
   // ── Light Times & Weather ─────────────────────────────────────────────────
 
-  const hasSunTimes = cs.sunrise || cs.sunset || cs.goldenHourAm || cs.goldenHourPm || cs.blueHourAm || cs.blueHourPm;
-
-  // weatherData is a Prisma JSON column — cast to a plain record for safe access
-  const w = cs.weatherData as Record<string, unknown> | null | undefined;
+  const hasTimes = cs.sunrise || cs.sunset || cs.goldenHourAm || cs.goldenHourPm || cs.blueHourAm || cs.blueHourPm;
+  const rawWeather = cs.weatherData as Record<string, unknown> | null | undefined;
   console.log('[export] raw weatherData:', JSON.stringify(cs.weatherData));
-  const hasWeather = !!w && Object.values(w).some((v) => v != null);
+  const hasWeather = !!rawWeather && Object.values(rawWeather).some((v) => v != null);
 
-  if (hasSunTimes || hasWeather) {
-    // Section header
-    const ltHdr = ws.addRow(['LIGHT TIMES & WEATHER', null, null, null, null, null]);
-    mergeRow(rowIdx);
-    ltHdr.height = 18;
-    ltHdr.getCell(1).fill = fill(BRAND_MID);
-    ltHdr.getCell(1).font = wfont({ bold: true });
-    ltHdr.getCell(1).alignment = { horizontal: 'center' };
-    ltHdr.getCell(1).border = { bottom: { style: 'medium', color: { argb: `FF${BRAND_TAN}` } } };
-    rowIdx++;
+  if (hasTimes || hasWeather) {
+    writeSectionHeader('LIGHT TIMES & WEATHER');
 
-    if (hasSunTimes) {
-      // All 6 cells written explicitly — no merges on data rows.
-      const styleTimeRow = (row: ExcelJS.Row) => {
-        row.height = 20;
-        for (let ci = 0; ci < 3; ci++) {
-          const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-          row.getCell(lc).value = row.getCell(lc).value; // keep value
-          row.getCell(lc).fill  = fill(BRAND_CREAM);
-          row.getCell(lc).font  = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-          row.getCell(vc).fill  = fill(BRAND_WHITE);
-          row.getCell(vc).font  = font();
-          row.getCell(vc).alignment = { horizontal: 'center' };
-        }
-      };
+    if (hasTimes) {
+      // Row: Sunrise | val | Sunset | val | Golden Hour AM | val — NO MERGES
+      const tr1 = ws.addRow([
+        'Sunrise', cs.sunrise ?? '—',
+        'Sunset', cs.sunset ?? '—',
+        'Golden Hour AM', cs.goldenHourAm ?? '—',
+      ]);
+      tr1.height = 18;
+      for (let i = 1; i <= 6; i++) {
+        const isLabel = i % 2 === 1;
+        tr1.getCell(i).fill = bg(isLabel ? BRAND_CREAM : BRAND_OFFWHITE);
+        tr1.getCell(i).font = f(9, isLabel ? BRAND_MID : BRAND_DARK, isLabel);
+      }
+      rowNum++;
 
-      const times1 = ws.addRow(['Sunrise', cs.sunrise ?? '—', 'Sunset', cs.sunset ?? '—', 'Golden Hour AM', cs.goldenHourAm ?? '—']);
-      styleTimeRow(times1);
-      rowIdx++;
-
-      const times2 = ws.addRow(['Golden Hour PM', cs.goldenHourPm ?? '—', 'Blue Hour AM', cs.blueHourAm ?? '—', 'Blue Hour PM', cs.blueHourPm ?? '—']);
-      styleTimeRow(times2);
-      rowIdx++;
+      // Row: Golden Hour PM | val | Blue Hour AM | val | Blue Hour PM | val — NO MERGES
+      const tr2 = ws.addRow([
+        'Golden Hour PM', cs.goldenHourPm ?? '—',
+        'Blue Hour AM', cs.blueHourAm ?? '—',
+        'Blue Hour PM', cs.blueHourPm ?? '—',
+      ]);
+      tr2.height = 18;
+      for (let i = 1; i <= 6; i++) {
+        const isLabel = i % 2 === 1;
+        tr2.getCell(i).fill = bg(isLabel ? BRAND_CREAM : BRAND_OFFWHITE);
+        tr2.getCell(i).font = f(9, isLabel ? BRAND_MID : BRAND_DARK, isLabel);
+      }
+      rowNum++;
     }
 
     if (hasWeather) {
-      // Safe string helper — guards against JS null *and* the string "null"
-      // that can appear when JSON null was serialised to a string somewhere.
-      const safeVal = (v: unknown, fallback = '—'): string => {
-        if (v == null) return fallback;
+      const w = rawWeather!;
+      // Log all keys so we can see the exact structure in Render logs
+      const safe = (v: unknown): string => {
+        if (v == null) return '—';
         const s = String(v).trim();
-        return s === '' || s === 'null' || s === 'undefined' ? fallback : s;
+        return s === '' || s === 'null' || s === 'undefined' ? '—' : s;
       };
 
-      const descVal   = safeVal(w!.description ?? w!.conditions);
-      const tempMax   = w!.tempMax    as number | null | undefined;
-      const tempMin   = w!.tempMin    as number | null | undefined;
-      const precip    = w!.precipitation as number | null | undefined;
-      const windSpeed = w!.windSpeed  as number | null | undefined;
+      const descVal  = safe(w.description ?? w.conditions);
+      const tempMax  = w.tempMax  as number | null | undefined;
+      const tempMin  = w.tempMin  as number | null | undefined;
+      const precip   = w.precipitation as number | null | undefined;
+      const wind     = w.windSpeed as number | null | undefined;
+      const tempStr  = [tempMin != null ? `${tempMin}°` : null, tempMax != null ? `${tempMax}°C` : null].filter(Boolean).join(' – ') || '—';
 
-      const tempStr = [
-        tempMin != null ? `${tempMin}°` : null,
-        tempMax != null ? `${tempMax}°C` : null,
-      ].filter(Boolean).join(' – ') || '—';
-
-      // Row 1: Conditions | val | Temperature | val | Precipitation | val
-      // All 6 cells written individually — no merges.
-      const wRow1 = ws.addRow([
-        'Conditions',    descVal,
-        'Temperature',   tempStr,
+      // Row: Conditions | val | Temperature | val | Precipitation | val — NO MERGES
+      const wr1 = ws.addRow([
+        'Conditions', descVal,
+        'Temperature', tempStr,
         'Precipitation', precip != null ? `${precip} mm` : '—',
       ]);
-      wRow1.height = 20;
-      for (let ci = 0; ci < 3; ci++) {
-        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-        wRow1.getCell(lc).fill = fill(BRAND_CREAM);
-        wRow1.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        wRow1.getCell(vc).fill = fill(BRAND_WHITE);
-        wRow1.getCell(vc).font = font();
-        wRow1.getCell(vc).alignment = { horizontal: 'center' };
+      wr1.height = 18;
+      for (let i = 1; i <= 6; i++) {
+        const isLabel = i % 2 === 1;
+        wr1.getCell(i).fill = bg(isLabel ? BRAND_CREAM : BRAND_OFFWHITE);
+        wr1.getCell(i).font = f(9, isLabel ? BRAND_MID : BRAND_DARK, isLabel);
       }
-      rowIdx++;
+      rowNum++;
 
-      // Row 2: Wind Speed | val | (4 spacer cells) — no merges.
-      const wRow2 = ws.addRow(['Wind Speed', windSpeed != null ? `${windSpeed} km/h` : '—', '', '', '', '']);
-      wRow2.height = 20;
-      wRow2.getCell(1).fill = fill(BRAND_CREAM);
-      wRow2.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-      wRow2.getCell(2).fill = fill(BRAND_WHITE);
-      wRow2.getCell(2).font = font();
-      wRow2.getCell(2).alignment = { horizontal: 'center' };
-      for (let c = 3; c <= 6; c++) {
-        wRow2.getCell(c).value = '';
-        wRow2.getCell(c).fill  = fill(BRAND_CREAM);
-        wRow2.getCell(c).font  = font();
-      }
-      rowIdx++;
+      // Row: Wind Speed | val | empty × 4 — NO MERGE, value written to B
+      const wr2 = ws.addRow(['Wind Speed', wind != null ? `${wind} km/h` : '—', '', '', '', '']);
+      wr2.height = 18;
+      wr2.getCell(1).fill = bg(BRAND_CREAM);   wr2.getCell(1).font = f(9, BRAND_MID, true);
+      wr2.getCell(2).fill = bg(BRAND_OFFWHITE); wr2.getCell(2).font = f(9, BRAND_DARK);
+      wr2.getCell(3).fill = bg(BRAND_CREAM);    wr2.getCell(3).font = f(9, BRAND_DARK);
+      wr2.getCell(4).fill = bg(BRAND_CREAM);    wr2.getCell(4).font = f(9, BRAND_DARK);
+      wr2.getCell(5).fill = bg(BRAND_CREAM);    wr2.getCell(5).font = f(9, BRAND_DARK);
+      wr2.getCell(6).fill = bg(BRAND_CREAM);    wr2.getCell(6).font = f(9, BRAND_DARK);
+      rowNum++;
     }
   }
 
-  // ── Spacer — pure decoration, merged A:F (no data values) ───────────────
-
+  // ── Spacer ────────────────────────────────────────────────────────────────
   const spacer = ws.addRow(['', '', '', '', '', '']);
-  mergeRow(rowIdx);
-  spacer.height = 6;
-  spacer.getCell(1).fill = fill(BRAND_TAN);
-  rowIdx++;
+  mergeRow(spacer, rowNum++);
+  spacer.height = 8;
+  spacer.getCell(1).fill = bg(BRAND_TAN);
 
   // ── Shot list header ──────────────────────────────────────────────────────
-  // Use explicit cell assignment (not addRow values) to prevent prior A:F merges
-  // from collapsing the header cells in Excel.
-
-  const shotHdrRow = ws.addRow([null, null, null, null, null, null]);
-  shotHdrRow.height = 22;
+  // Values set cell-by-cell to avoid any residual merge influence.
+  const shotHdr = ws.addRow(['', '', '', '', '', '']);
+  shotHdr.height = 22;
   const shotHdrLabels = ['#', 'Shot / Description', 'Location', 'Timing', 'Notes', 'Status'];
-  for (let i = 0; i < shotHdrLabels.length; i++) {
-    const cell = shotHdrRow.getCell(i + 1);
-    cell.value = shotHdrLabels[i];
-    cell.fill = fill(BRAND_DARK);
-    cell.font = wfont({ bold: true, size: 10 });
+  shotHdrLabels.forEach((label, i) => {
+    const cell = shotHdr.getCell(i + 1);
+    cell.value = label;
+    cell.fill  = bg(BRAND_DARK);
+    cell.font  = f(9, BRAND_WHITE, true);
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
-  }
-  rowIdx++;
+  });
+  rowNum++;
 
-  // ── Shot list — flat, one row per shot ───────────────────────────────────
+  // ── Shot rows — flat list, no merges ─────────────────────────────────────
+  const cleanStr = (v: string | null | undefined): string => {
+    if (!v) return '';
+    const n = v.trim().toLowerCase();
+    return n === 'none' || n === 'null' || n === 'n/a' ? '' : v.trim();
+  };
 
   const sortedShots = [...cs.shots].sort((a, b) => a.sortOrder - b.sortOrder);
   let shotNum = 0;
 
-  for (const cs_shot of sortedShots) {
-    const desc = cs_shot.shot.description;
-    // Skip rows with no meaningful description
+  for (const s of sortedShots) {
+    const desc = s.shot.description;
     if (!desc) continue;
     const descNorm = desc.trim().toLowerCase();
     if (descNorm === '' || descNorm === 'none' || descNorm === 'null' || descNorm === 'n/a') continue;
 
-    const bg = shotNum % 2 === 0 ? BRAND_WHITE : BRAND_CREAM;
-    const status = cs_shot.statusOverride ?? cs_shot.shot.status;
-    const statusChar = status === 'DONE' ? '✓' : '☐';
+    const rowBg = shotNum % 2 === 0 ? BRAND_OFFWHITE : BRAND_CREAM;
+    const status = s.statusOverride ?? s.shot.status;
+    const statusChar = status === 'DONE' ? '☑' : '☐';
 
-    // Sanitise string fields — replace import placeholders with empty strings
-    const cleanField = (v: string | null | undefined): string => {
-      if (!v) return '';
-      const n = v.trim().toLowerCase();
-      return n === 'none' || n === 'null' || n === 'n/a' ? '' : v.trim();
-    };
-
-    const shotRow = ws.addRow([
+    const sr = ws.addRow([
       shotNum + 1,
       desc,
-      cleanField(cs_shot.shot.location?.name),
-      cleanField(cs_shot.shot.timing),
-      cleanField(cs_shot.shot.notes),
+      cleanStr(s.shot.location?.name),
+      cleanStr(s.shot.timing),
+      cleanStr(s.shot.notes),
       statusChar,
     ]);
-    shotRow.height = 20;
-    for (let c = 1; c <= 6; c++) {
-      shotRow.getCell(c).fill = fill(bg);
-      shotRow.getCell(c).font = font({ size: 10 });
-      shotRow.getCell(c).border = thinBorder();
-      shotRow.getCell(c).alignment = { wrapText: true, vertical: 'top' };
+    sr.height = 20;
+    for (let i = 1; i <= 6; i++) {
+      sr.getCell(i).fill      = bg(rowBg);
+      sr.getCell(i).font      = f(9, BRAND_DARK);
+      sr.getCell(i).alignment = { wrapText: true, vertical: 'top' };
     }
-    shotRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
-    shotRow.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
+    sr.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+    sr.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
     shotNum++;
-    rowIdx++;
+    rowNum++;
   }
 
   // ── Footer ────────────────────────────────────────────────────────────────
+  const footer = ws.addRow([`${project.agencyName ?? project.name} | CONFIDENTIAL`, '', '', '', '', '']);
+  mergeRow(footer, rowNum++);
+  footer.height = 18;
+  footer.getCell(1).fill      = bg(BRAND_CREAM);
+  footer.getCell(1).font      = f(8, BRAND_MID, false, true);
+  footer.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
-  const footerText = `${project.agencyName ?? project.name}  |  CONFIDENTIAL`;
-  const footer = ws.addRow([footerText, null, null, null, null, null]);
-  mergeRow(rowIdx);
-  footer.height = 20;
-  footer.getCell(1).fill = fill(BRAND_CREAM);
-  footer.getCell(1).font = font({ italic: true, color: { argb: `FF${BRAND_MID}` } });
-  footer.getCell(1).alignment = { horizontal: 'center' };
+  // ── Logo overlay ──────────────────────────────────────────────────────────
+  // Embedded after all rows so row numbers are stable. Placed over row 1 (top-left).
+  if (project.logoUrl) {
+    try {
+      const m = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+      if (m) {
+        const ext     = m[1] === 'webp' ? 'png' : m[1] as 'png' | 'jpeg' | 'gif';
+        const base64  = m[2];
+        let logoW     = 105; // default: 35px height × 3:1 ratio
+        const logoH   = 35;
+        if (m[1] === 'png') {
+          try {
+            const hdr = Buffer.from(base64.slice(0, 32), 'base64');
+            if (hdr[0] === 0x89 && hdr[1] === 0x50) {
+              const iw = hdr.readUInt32BE(16);
+              const ih = hdr.readUInt32BE(20);
+              if (iw > 0 && ih > 0) logoW = Math.round(logoH * (iw / ih));
+            }
+          } catch { /* use default */ }
+        }
+        const imageId = wb.addImage({ base64, extension: ext });
+        ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: logoW, height: logoH } });
+      }
+    } catch { /* skip silently */ }
+  }
 }
 
 function colLetter(n: number): string {
