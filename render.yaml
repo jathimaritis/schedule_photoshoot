@@ -4,10 +4,7 @@ services:
     env: node
     buildCommand: >-
       cd frontend && npm install --include=dev && npm run build &&
-      cd ../backend && npm install --include=dev && npx prisma generate && npm run build &&
-      (npx prisma migrate resolve --rolled-back 20260521000000_init 2>/dev/null || true) &&
-      (node scripts/fix-migration.js || true) &&
-      npx prisma migrate deploy
+      cd ../backend && npm install --include=dev && npx prisma generate && npm run build
     startCommand: node backend/dist/index.js
     envVars:
       - key: DATABASE_URL
