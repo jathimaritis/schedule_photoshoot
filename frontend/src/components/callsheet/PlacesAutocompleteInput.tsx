@@ -109,12 +109,14 @@ export default function PlacesAutocompleteInput({ value, onChange, placeholder =
           placeholder={placeholder}
           className={inputClass}
         />
-        <p className="flex items-center gap-1 text-xs text-amber-600 mt-0.5">
-          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-          {status === 'no-key'
-            ? 'Location autocomplete unavailable — set VITE_GOOGLE_MAPS_API_KEY to enable it'
-            : 'Google Maps failed to load — type a location and auto-populate will geocode it'}
-        </p>
+        {!value && (
+          <p className="flex items-center gap-1 text-xs text-amber-600 mt-0.5">
+            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+            {status === 'no-key'
+              ? 'Location autocomplete unavailable — set VITE_GOOGLE_MAPS_API_KEY to enable it'
+              : 'Google Maps failed to load — type a location and auto-populate will geocode it'}
+          </p>
+        )}
       </div>
     );
   }
