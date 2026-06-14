@@ -542,162 +542,282 @@ router.get('/:id/export/pdf', async (req: Request, res: Response): Promise<void>
     const sheet = await getSheet(req.params.id, req.user!.organisationId);
     if (!sheet) { res.status(404).json({ error: 'Not found' }); return; }
 
+    const org = await prisma.organisation.findUnique({
+      where: { id: sheet.organisationId },
+      select: { logoUrl: true },
+    });
+    const logoUrl = org?.logoUrl ?? null;
+
     const contacts = (Array.isArray(sheet.contacts) ? sheet.contacts : []) as Array<{
       title?: string; name?: string; phone?: string; email?: string;
     }>;
     const wd = sheet.weatherData as { description?: string; tempMax?: number; tempMin?: number; precipitation?: number; windSpeed?: number } | null;
 
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    // ── Brand colours ──────────────────────────────────────────────────────
+    const DARK_BROWN = '#2C2318';
+    const MID_BROWN  = '#7A5C3A';
+    const WARM_TAN   = '#B89A7A';
+    const CREAM      = '#F5F0EB';
+    const OFF_WHITE  = '#FAFAF8';
+    const GREY_TEXT  = '#999999';
+
+    const PAGE_W = 595.28;
+    const PAGE_H = 841.89;
+    const M      = 24;           // margin
+    const CW     = PAGE_W - M * 2;
+    const FOOTER_RESERVE = 26;  // space kept clear at page bottom for footer
+
+    const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${sheet.projectName.replace(/[^a-z0-9]/gi, '_')}_callsheet.pdf"`);
     doc.pipe(res);
 
-    const NAVY_RGB = [26, 26, 46] as const;
-    const GOLD_RGB = [212, 175, 55] as const;
-    const GREY_RGB = [240, 240, 240] as const;
-    const PURPLE_RGB = [44, 44, 84] as const;
+    // ── HEADER (90 px, full page width) ───────────────────────────────────
+    doc.rect(0, 0, PAGE_W, 90).fill(DARK_BROWN);
 
-    const pageW = doc.page.width - 80;
-
-    // Title bar
-    doc.rect(40, 40, pageW, 30).fill(`rgb(${NAVY_RGB.join(',')})`);
-    doc.fillColor(`rgb(${GOLD_RGB.join(',')})`).fontSize(14).font('Helvetica-Bold')
-      .text(sheet.projectName.toUpperCase() + ' — PRODUCTION CALL SHEET', 40, 48, { width: pageW, align: 'center' });
-
-    let y = 80;
-
-    const checkPage = (needed = 24) => {
-      if (y + needed > doc.page.height - 50) { doc.addPage(); y = 40; }
-    };
-
-    const section = (title: string) => {
-      checkPage(26);
-      doc.rect(40, y, pageW, 18).fill(`rgb(${PURPLE_RGB.join(',')})`);
-      doc.fillColor('white').fontSize(9).font('Helvetica-Bold').text(title, 44, y + 4);
-      y += 22;
-    };
-
-    const row2col = (l1: string, v1: string, l2: string, v2: string) => {
-      checkPage();
-      const hw = pageW / 2;
-      doc.rect(40, y, hw, 16).fill(`rgb(${GREY_RGB.join(',')})`);
-      doc.rect(40 + hw, y, hw, 16).fill('white');
-      doc.fillColor('#222').fontSize(8).font('Helvetica-Bold').text(l1, 44, y + 3, { width: hw * 0.4 });
-      doc.fillColor('#333').font('Helvetica').text(v1, 44 + hw * 0.4, y + 3, { width: hw * 0.6 - 4 });
-      doc.fillColor('#222').font('Helvetica-Bold').text(l2, 44 + hw, y + 3, { width: hw * 0.4 });
-      doc.fillColor('#333').font('Helvetica').text(v2, 44 + hw + hw * 0.4, y + 3, { width: hw * 0.6 - 4 });
-      y += 18;
-    };
-
-    const row1col = (label: string, value: string, tallH = 16) => {
-      checkPage(tallH + 2);
-      doc.rect(40, y, pageW, tallH).fill(`rgb(${GREY_RGB.join(',')})`);
-      doc.fillColor('#222').fontSize(8).font('Helvetica-Bold').text(label, 44, y + 3, { width: pageW * 0.22 });
-      doc.fillColor('#333').font('Helvetica').text(value, 44 + pageW * 0.22, y + 3,
-        { width: pageW * 0.78 - 4, lineBreak: tallH > 16, height: tallH - 6 });
-      y += tallH + 2;
-    };
-
-    // Project details
-    section('PROJECT DETAILS');
-    row2col('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
-    row1col('Location', sheet.location ?? '');
-    row2col('Shooting Date', sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '', '', '');
-    if (sheet.generalNotes) row1col('General Notes', sheet.generalNotes, 48);
-    y += 6;
-
-    // Contacts
-    if (contacts.length > 0) {
-      section('CREW & CLIENT CONTACTS');
-      // Header
-      const cw = [pageW * 0.22, pageW * 0.24, pageW * 0.2, pageW * 0.34];
-      const cx = [40, 40 + cw[0], 40 + cw[0] + cw[1], 40 + cw[0] + cw[1] + cw[2]];
-      doc.rect(40, y, pageW, 15).fill(`rgb(${PURPLE_RGB.join(',')})`);
-      ['Title', 'Name', 'Phone', 'Email'].forEach((h, i) => {
-        doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold')
-          .text(h, cx[i] + 2, y + 3, { width: cw[i] - 4, align: 'left' });
-      });
-      y += 17;
-      contacts.forEach((ct, i) => {
-        checkPage();
-        doc.rect(40, y, pageW, 15).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
-        [ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? ''].forEach((v, j) => {
-          doc.fillColor('#333').fontSize(7.5).font('Helvetica')
-            .text(v, cx[j] + 2, y + 3, { width: cw[j] - 4, lineBreak: false });
-        });
-        y += 16;
-      });
-      y += 6;
+    // Left: logo or fallback text
+    let logoOk = false;
+    if (logoUrl) {
+      try {
+        const m = logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+        if (m) {
+          doc.image(Buffer.from(m[2], 'base64'), M, 22.5, { height: 45, fit: [160, 45] });
+          logoOk = true;
+        }
+      } catch { /* skip */ }
+    }
+    if (!logoOk) {
+      doc.fillColor('white').fontSize(14).font('Helvetica-Bold')
+        .text('JA PHOTOGRAPHY', M, 30, { width: 200, lineBreak: false });
     }
 
-    // Light & weather
-    section('LIGHT TIMES & WEATHER');
-    row2col('Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? '');
-    row2col('Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? '');
-    row2col('Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? '');
+    // Right: project name / client / date + location
+    const shootDate = sheet.shootingDate ? format(new Date(sheet.shootingDate), 'dd MMMM yyyy') : '';
+    const dateLocStr = [shootDate, sheet.location ?? ''].filter(Boolean).join(' · ');
+    doc.fillColor('white').fontSize(13).font('Helvetica-Bold')
+      .text(sheet.projectName, M, 18, { width: CW, align: 'right', lineBreak: false });
+    doc.fillColor('white').fontSize(10).font('Helvetica')
+      .text(sheet.client ?? '', M, 40, { width: CW, align: 'right', lineBreak: false });
+    if (dateLocStr) {
+      doc.fillColor('white').fontSize(10).font('Helvetica')
+        .text(dateLocStr, M, 57, { width: CW, align: 'right', lineBreak: false });
+    }
+
+    // ── ACCENT BAR (4 px) ─────────────────────────────────────────────────
+    doc.rect(0, 90, PAGE_W, 4).fill(WARM_TAN);
+
+    let y = 104;
+
+    const checkPage = (needed = 22) => {
+      if (y + needed > PAGE_H - FOOTER_RESERVE - 8) {
+        doc.addPage();
+        y = M + 8;
+      }
+    };
+
+    const sectionHeader = (title: string) => {
+      y += 14;
+      checkPage(24);
+      doc.fillColor(MID_BROWN).fontSize(9).font('Helvetica-Bold')
+        .text(title, M, y, { lineBreak: false });
+      y += 13;
+      doc.save().moveTo(M, y).lineTo(PAGE_W - M, y).lineWidth(0.5).strokeColor(WARM_TAN).stroke().restore();
+      y += 6;
+    };
+
+    const detail2 = (l1: string, v1: string, l2 = '', v2 = '') => {
+      checkPage(15);
+      const hw = CW / 2;
+      const lw = hw * 0.38;
+      doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold')
+        .text(l1, M, y, { width: lw, lineBreak: false });
+      doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica')
+        .text(v1 || '—', M + lw, y, { width: hw - lw - 4, lineBreak: false });
+      if (l2) {
+        doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold')
+          .text(l2, M + hw, y, { width: lw, lineBreak: false });
+        doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica')
+          .text(v2 || '—', M + hw + lw, y, { width: hw - lw - 4, lineBreak: false });
+      }
+      y += 14;
+    };
+
+    // ── PROJECT DETAILS ───────────────────────────────────────────────────
+    sectionHeader('PROJECT DETAILS');
+    detail2('Client', sheet.client ?? '', 'Project Name', sheet.projectName);
+    detail2('Location', sheet.location ?? '', 'Shooting Date', shootDate);
+    if (sheet.generalNotes) {
+      checkPage(36);
+      const lw = CW * 0.3;
+      doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold')
+        .text('General Notes', M, y, { width: lw, lineBreak: false });
+      const approxLines = Math.max(2, Math.ceil(sheet.generalNotes.length / 110));
+      doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica')
+        .text(sheet.generalNotes, M + lw, y, { width: CW - lw - 4, lineBreak: true });
+      y += approxLines * 11 + 4;
+    }
+
+    // ── CREW & CLIENT CONTACTS ────────────────────────────────────────────
+    sectionHeader('CREW & CLIENT CONTACTS');
+    if (contacts.length === 0) {
+      doc.fillColor('#888888').fontSize(8).font('Helvetica')
+        .text('No contacts added', M, y, { lineBreak: false });
+      y += 14;
+    } else {
+      const cw  = [CW * 0.18, CW * 0.22, CW * 0.20, CW * 0.40];
+      const cx  = cw.reduce<number[]>((a, w, i) => { a.push(i === 0 ? M : a[i-1] + cw[i-1]); return a; }, []);
+      checkPage(22);
+      doc.rect(M, y, CW, 20).fill(DARK_BROWN);
+      ['Title', 'Name', 'Phone', 'Email'].forEach((h, i) => {
+        doc.fillColor('white').fontSize(8).font('Helvetica-Bold')
+          .text(h, cx[i] + 4, y + 6, { width: cw[i] - 8, lineBreak: false });
+      });
+      y += 20;
+      contacts.forEach((ct, idx) => {
+        checkPage(18);
+        doc.rect(M, y, CW, 18).fill(idx % 2 === 0 ? CREAM : OFF_WHITE);
+        [ct.title ?? '', ct.name ?? '', ct.phone ?? '', ct.email ?? ''].forEach((v, j) => {
+          doc.fillColor(DARK_BROWN).fontSize(8).font('Helvetica')
+            .text(v, cx[j] + 4, y + 5, { width: cw[j] - 8, lineBreak: false });
+        });
+        y += 18;
+      });
+    }
+
+    // ── LIGHT TIMES & WEATHER ─────────────────────────────────────────────
+    sectionHeader('LIGHT TIMES & WEATHER');
+    const hw = CW / 2;
+    const llw = hw * 0.5;
+    [
+      ['Sunrise', sheet.sunrise ?? '', 'Sunset', sheet.sunset ?? ''],
+      ['Golden Hour AM', sheet.goldenHourAm ?? '', 'Golden Hour PM', sheet.goldenHourPm ?? ''],
+      ['Blue Hour AM', sheet.blueHourAm ?? '', 'Blue Hour PM', sheet.blueHourPm ?? ''],
+    ].forEach(([l1, v1, l2, v2]) => {
+      checkPage(14);
+      doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold').text(l1, M, y, { width: llw, lineBreak: false });
+      doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica-Bold').text(v1 || '—', M + llw, y, { width: hw - llw - 4, lineBreak: false });
+      doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold').text(l2, M + hw, y, { width: llw, lineBreak: false });
+      doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica-Bold').text(v2 || '—', M + hw + llw, y, { width: hw - llw - 4, lineBreak: false });
+      y += 14;
+    });
     if (wd) {
+      y += 4;
+      checkPage(14);
       const temp = wd.tempMin != null && wd.tempMax != null
         ? `${wd.tempMin}° – ${wd.tempMax}°C`
-        : wd.tempMax != null ? `${wd.tempMax}°C` : '';
-      row2col('Conditions', wd.description ?? '', 'Temperature', temp);
-      row2col('Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '',
-        'Wind Speed', wd.windSpeed != null ? `${wd.windSpeed} km/h` : '');
-    }
-    y += 6;
-
-    // Logistics
-    section('DAILY LOGISTICS');
-    row2col('Start of Day', sheet.startOfDay ?? '', 'End of Day', sheet.endOfDay ?? '');
-    row2col('Breakfast', sheet.breakfastTime ?? '', 'Lunch', sheet.lunchTime ?? '');
-    if (sheet.dinnerTime) row2col('Dinner', sheet.dinnerTime, '', '');
-    y += 6;
-
-    // Shot list
-    section('SHOT LIST');
-    const cols = [pageW * 0.21, pageW * 0.33, pageW * 0.1, pageW * 0.28, pageW * 0.08];
-    const colX = cols.reduce<number[]>((acc, _, i) => {
-      acc.push(i === 0 ? 40 : acc[i - 1] + cols[i - 1]);
-      return acc;
-    }, []);
-    const hdrs = ['Shooting Location', 'Description', 'Timing', 'Notes', 'Done'];
-    checkPage();
-    doc.rect(40, y, pageW, 16).fill(`rgb(${PURPLE_RGB.join(',')})`);
-    hdrs.forEach((h, i) => {
-      doc.fillColor('white').fontSize(7.5).font('Helvetica-Bold')
-        .text(h, colX[i] + 2, y + 4, { width: cols[i] - 4, align: i === 4 ? 'center' : 'center' });
-    });
-    y += 18;
-
-    const drawCheckbox = (cx: number, cy: number, done: boolean) => {
-      const boxSize = 7;
-      const bx = cx + (cols[4] - boxSize) / 2; // centre in column
-      const by = cy + (16 - boxSize) / 2;
-      doc.save();
-      doc.lineWidth(0.75);
-      doc.rect(bx, by, boxSize, boxSize).stroke('#555');
-      if (done) {
-        // Checkmark: ╲ from top-left-ish to middle-bottom, then up-right to top-right-ish
-        doc.moveTo(bx + 1, by + 3.5)
-           .lineTo(bx + 3, by + 6)
-           .lineTo(bx + 6, by + 1)
-           .stroke('#1a1a2e');
-      }
-      doc.restore();
-    };
-
-    sheet.shots.forEach((s, i) => {
-      checkPage(18);
-      doc.rect(40, y, pageW, 16).fill(i % 2 === 0 ? 'white' : `rgb(${GREY_RGB.join(',')})`);
-      // Text columns (0-3)
-      [s.shootingLocation ?? '', s.description, s.timing ?? '', s.notes ?? ''].forEach((v, j) => {
-        doc.fillColor('#333').fontSize(7.5).font('Helvetica')
-          .text(v, colX[j] + 2, y + 4, { width: cols[j] - 4, lineBreak: false });
+        : wd.tempMax != null ? `${wd.tempMax}°C` : '—';
+      const wCols = [
+        ['Conditions', wd.description ?? '—'],
+        ['Temperature', temp],
+        ['Precipitation', wd.precipitation != null ? `${wd.precipitation} mm` : '—'],
+        ['Wind Speed', wd.windSpeed != null ? `${wd.windSpeed} km/h` : '—'],
+      ] as const;
+      const ww = CW / 4;
+      wCols.forEach(([l, v], i) => {
+        doc.fillColor(WARM_TAN).fontSize(8).font('Helvetica-Bold').text(l, M + i * ww, y, { width: ww * 0.48, lineBreak: false });
+        doc.fillColor(DARK_BROWN).fontSize(9).font('Helvetica-Bold').text(v, M + i * ww + ww * 0.48, y, { width: ww * 0.52 - 4, lineBreak: false });
       });
-      // Checkbox column (4)
-      drawCheckbox(colX[4], y, s.status === 'DONE');
-      y += 16;
+      y += 14;
+    }
+
+    // ── DAILY LOGISTICS ───────────────────────────────────────────────────
+    sectionHeader('DAILY LOGISTICS');
+    const logItems = [
+      { label: 'Start of Day', value: sheet.startOfDay },
+      { label: 'Breakfast',    value: sheet.breakfastTime },
+      { label: 'Lunch',        value: sheet.lunchTime },
+      { label: 'Dinner',       value: sheet.dinnerTime },
+      { label: 'End of Day',   value: sheet.endOfDay },
+    ];
+    const boxGap = 6;
+    const boxW   = (CW - boxGap * (logItems.length - 1)) / logItems.length;
+    const boxH   = 42;
+    checkPage(boxH + 6);
+    logItems.forEach((item, i) => {
+      const bx = M + i * (boxW + boxGap);
+      doc.save().rect(bx, y, boxW, boxH).lineWidth(0.75).strokeColor(WARM_TAN).stroke().restore();
+      doc.fillColor(WARM_TAN).fontSize(7).font('Helvetica-Bold')
+        .text(item.label, bx + 4, y + 7, { width: boxW - 8, align: 'center', lineBreak: false });
+      if (item.value) {
+        doc.fillColor(DARK_BROWN).fontSize(10).font('Helvetica-Bold')
+          .text(item.value, bx + 4, y + 22, { width: boxW - 8, align: 'center', lineBreak: false });
+      } else {
+        doc.save().moveTo(bx + 8, y + 33).lineTo(bx + boxW - 8, y + 33).lineWidth(0.5).strokeColor('#CCCCCC').stroke().restore();
+      }
+    });
+    y += boxH + 8;
+
+    // ── SHOT LIST ─────────────────────────────────────────────────────────
+    sectionHeader('SHOT LIST');
+    const sCW  = [CW * 0.05, CW * 0.22, CW * 0.33, CW * 0.12, CW * 0.20, CW * 0.08];
+    const sCX  = sCW.reduce<number[]>((a, w, i) => { a.push(i === 0 ? M : a[i-1] + sCW[i-1]); return a; }, []);
+    checkPage(22);
+    doc.rect(M, y, CW, 20).fill(DARK_BROWN);
+    ['#', 'Shooting Location', 'Description', 'Timing', 'Notes', ''].forEach((h, i) => {
+      doc.fillColor('white').fontSize(8).font('Helvetica-Bold')
+        .text(h, sCX[i] + 3, y + 6, { width: sCW[i] - 6, align: i === 0 ? 'center' : 'left', lineBreak: false });
+    });
+    y += 20;
+
+    let prevLoc = '';
+    sheet.shots.forEach((s, i) => {
+      const showLoc = !!s.shootingLocation && s.shootingLocation !== prevLoc;
+      if (s.shootingLocation) prevLoc = s.shootingLocation;
+
+      const descLines  = Math.max(1, Math.ceil((s.description?.length ?? 0) / 52));
+      const notesLines = Math.max(1, Math.ceil((s.notes?.length ?? 0) / 32));
+      const rowH = Math.max(18, Math.max(descLines, notesLines) * 11 + 8);
+
+      checkPage(rowH);
+      doc.rect(M, y, CW, rowH).fill(i % 2 === 0 ? CREAM : OFF_WHITE);
+      doc.save().moveTo(M, y + rowH).lineTo(M + CW, y + rowH).lineWidth(0.25).strokeColor(WARM_TAN).stroke().restore();
+
+      // # — row number
+      doc.fillColor(GREY_TEXT).fontSize(8).font('Helvetica')
+        .text(String(i + 1), sCX[0] + 2, y + 5, { width: sCW[0] - 4, align: 'center', lineBreak: false });
+      // Location (suppressed when same as previous)
+      if (showLoc) {
+        doc.fillColor(DARK_BROWN).fontSize(8).font('Helvetica')
+          .text(s.shootingLocation!, sCX[1] + 3, y + 5, { width: sCW[1] - 6, lineBreak: true, height: rowH - 8 });
+      }
+      // Description
+      doc.fillColor(DARK_BROWN).fontSize(8).font('Helvetica')
+        .text(s.description || '', sCX[2] + 3, y + 5, { width: sCW[2] - 6, lineBreak: true, height: rowH - 8 });
+      // Timing
+      doc.fillColor(DARK_BROWN).fontSize(8).font('Helvetica')
+        .text(s.timing ?? '', sCX[3] + 3, y + 5, { width: sCW[3] - 6, lineBreak: false });
+      // Notes
+      doc.fillColor(DARK_BROWN).fontSize(8).font('Helvetica')
+        .text(s.notes ?? '', sCX[4] + 3, y + 5, { width: sCW[4] - 6, lineBreak: true, height: rowH - 8 });
+      // Status — drawn checkmark or hollow box
+      if (s.status === 'DONE') {
+        const cx = sCX[5] + sCW[5] / 2;
+        const cy = y + rowH / 2;
+        doc.save().strokeColor(MID_BROWN).lineWidth(1.5)
+          .moveTo(cx - 4, cy).lineTo(cx - 1, cy + 3).lineTo(cx + 4, cy - 4).stroke().restore();
+      } else {
+        const bsz = 8;
+        const bx  = sCX[5] + (sCW[5] - bsz) / 2;
+        const by  = y + (rowH - bsz) / 2;
+        doc.save().rect(bx, by, bsz, bsz).lineWidth(0.75).strokeColor(WARM_TAN).stroke().restore();
+      }
+      y += rowH;
     });
 
+    // ── FOOTERS on every page ─────────────────────────────────────────────
+    const range = doc.bufferedPageRange();
+    const fY = PAGE_H - 16;
+    for (let p = 0; p < range.count; p++) {
+      doc.switchToPage(p);
+      doc.save().moveTo(M, fY - 5).lineTo(PAGE_W - M, fY - 5).lineWidth(0.5).strokeColor(WARM_TAN).stroke().restore();
+      const leftTxt = [sheet.projectName, shootDate].filter(Boolean).join(' · ');
+      doc.fillColor(GREY_TEXT).fontSize(7).font('Helvetica')
+        .text(leftTxt, M, fY, { width: CW / 2, lineBreak: false });
+      doc.fillColor(GREY_TEXT).fontSize(7).font('Helvetica')
+        .text(`Page ${p + 1} of ${range.count}`, M + CW / 2, fY, { width: CW / 2, align: 'right', lineBreak: false });
+    }
+
+    doc.flushPages();
     doc.end();
   } catch (err) {
     console.error('PDF export error:', err);
