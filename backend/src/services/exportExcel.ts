@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
 
+// Schedule sheet colours (unchanged)
 const NAVY = '1A1A2E';
 const GOLD = 'D4AF37';
 const INDIGO = '2C2C54';
@@ -9,6 +10,13 @@ const LIGHT_GREY = 'F0F0F0';
 const OFF_WHITE = 'FAFAFA';
 const BORDER_GREY = 'D0D0D0';
 const BODY_TEXT = '1A1A1A';
+
+// Brand palette (call sheet)
+const BRAND_DARK  = '2C2318';
+const BRAND_MID   = '7A5C3A';
+const BRAND_TAN   = 'B89A7A';
+const BRAND_CREAM = 'F5F0EB';
+const BRAND_WHITE = 'FAFAF8';
 
 function hex(color: string): string {
   return color.startsWith('#') ? color.slice(1) : color;
@@ -323,73 +331,99 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   const wsName = `Day ${day.dayNumber}`;
   const ws = wb.addWorksheet(wsName);
 
-  ws.columns = [{ width: 28 }, { width: 28 }, { width: 28 }, { width: 28 }];
+  // 6 columns: #  | Shot/Description | Location | Timing | Notes | Status
+  ws.columns = [
+    { width: 5 },   // #
+    { width: 34 },  // Shot / Description
+    { width: 20 },  // Location
+    { width: 12 },  // Timing
+    { width: 28 },  // Notes
+    { width: 9 },   // Status
+  ];
+
+  ws.pageSetup = {
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    showGridLines: false,
+  };
 
   const type = project.photographyTypes.find((t) => t.id === day.photographyTypeId);
-  const typeColour = type?.hexColour ?? NAVY;
+  const typeColour = type?.hexColour ?? BRAND_DARK;
   const dateStr = format(new Date(day.calendarDate), 'EEEE, dd MMMM yyyy');
   let rowIdx = 1;
 
-  const addRow = (vals: (string | null)[], bg: string, textColor: string, bold = false, merge = false) => {
-    const row = ws.addRow(vals);
-    row.height = 20;
-    for (let i = 1; i <= 4; i++) {
-      row.getCell(i).fill = fill(bg);
-      row.getCell(i).font = font({ color: { argb: `FF${hex(textColor)}` }, bold });
-    }
-    if (merge) ws.mergeCells(`A${rowIdx}:D${rowIdx}`);
-    rowIdx++;
-    return row;
-  };
+  const thinBorder = (color = BRAND_TAN): Partial<ExcelJS.Borders> => ({
+    bottom: { style: 'thin', color: { argb: `FF${color}` } },
+  });
 
-  // Logo (top-right corner of call sheet)
+  const mergeRow = (n: number) => ws.mergeCells(`A${n}:F${n}`);
+
+  // ── Logo (top-right) ──────────────────────────────────────────────────────
   if (project.logoUrl) {
     try {
-      const dataUrlMatch = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
-      if (dataUrlMatch) {
-        const ext = dataUrlMatch[1] === 'webp' ? 'png' : dataUrlMatch[1] as 'png' | 'jpeg' | 'gif';
-        const base64 = dataUrlMatch[2];
-        const imageId = wb.addImage({ base64, extension: ext });
-        ws.addImage(imageId, { tl: { col: 3, row: 0 }, ext: { width: 100, height: 40 } });
+      const m = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+      if (m) {
+        const ext = m[1] === 'webp' ? 'png' : m[1] as 'png' | 'jpeg' | 'gif';
+        const imageId = wb.addImage({ base64: m[2], extension: ext });
+        ws.addImage(imageId, { tl: { col: 4.5, row: 0 }, ext: { width: 110, height: 44 } });
       }
-    } catch {
-      // skip logo if embedding fails
-    }
+    } catch { /* skip */ }
   }
 
-  // Row 1: Title
-  const r1 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, null, null, null]);
-  ws.mergeCells(`A1:D1`);
+  // ── Header block ──────────────────────────────────────────────────────────
+
+  // Row 1: Project name
+  const r1 = ws.addRow([project.name.toUpperCase(), null, null, null, null, null]);
+  mergeRow(rowIdx);
   r1.height = 28;
-  r1.getCell(1).fill = fill(NAVY);
-  r1.getCell(1).font = wfont({ bold: true, size: 13, color: { argb: `FF${GOLD}` } });
-  r1.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+  r1.getCell(1).fill = fill(BRAND_CREAM);
+  r1.getCell(1).font = font({ bold: true, size: 13, color: { argb: `FF${BRAND_DARK}` } });
+  r1.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
   rowIdx++;
 
-  // Row 2: Date + type colour bar
-  const r2 = ws.addRow([`${dateStr} | ${type?.name ?? ''}`, null, null, null]);
-  ws.mergeCells(`A2:D2`);
-  r2.height = 22;
-  r2.getCell(1).fill = fill(typeColour);
-  r2.getCell(1).font = wfont({ bold: true });
+  // Row 2: Title bar
+  const r2 = ws.addRow([`SHOOTING DAY ${day.dayNumber} — CALL SHEET`, null, null, null, null, null]);
+  mergeRow(rowIdx);
+  r2.height = 26;
+  r2.getCell(1).fill = fill(BRAND_DARK);
+  r2.getCell(1).font = wfont({ bold: true, size: 12 });
   r2.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
   rowIdx++;
 
-  // Row 3: Notes
-  const r3 = ws.addRow([cs.notes ?? '', null, null, null]);
-  ws.mergeCells(`A3:D3`);
-  r3.height = 30;
-  r3.getCell(1).fill = fill(OFF_WHITE);
-  r3.getCell(1).font = font({ italic: true });
-  r3.getCell(1).alignment = { wrapText: true };
+  // Row 3: Date + type colour bar
+  const dateLabel = `${dateStr}${type ? `  |  ${type.name}` : ''}`;
+  const r3 = ws.addRow([dateLabel, null, null, null, null, null]);
+  mergeRow(rowIdx);
+  r3.height = 22;
+  r3.getCell(1).fill = fill(typeColour);
+  r3.getCell(1).font = wfont({ bold: true });
+  r3.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
   rowIdx++;
 
-  // Row 4: spacer
-  const r4 = ws.addRow(['', null, null, null]);
-  r4.height = 8;
-  ws.mergeCells(`A4:D4`);
-  r4.getCell(1).fill = fill(LIGHT_GREY);
+  // Row 4: Location + date info
+  const locationText = cs.location ? `📍 ${cs.location}` : '';
+  const r4 = ws.addRow([locationText, null, null, null, null, null]);
+  mergeRow(rowIdx);
+  r4.height = 20;
+  r4.getCell(1).fill = fill(BRAND_CREAM);
+  r4.getCell(1).font = font({ color: { argb: `FF${BRAND_MID}` } });
+  r4.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
   rowIdx++;
+
+  // Row 5: Notes
+  if (cs.notes) {
+    const r5 = ws.addRow([cs.notes, null, null, null, null, null]);
+    mergeRow(rowIdx);
+    r5.height = 30;
+    r5.getCell(1).fill = fill(BRAND_CREAM);
+    r5.getCell(1).font = font({ italic: true, color: { argb: `FF${BRAND_DARK}` } });
+    r5.getCell(1).alignment = { wrapText: true, vertical: 'top', indent: 1 };
+    rowIdx++;
+  }
+
+  // ── Field blocks ──────────────────────────────────────────────────────────
 
   const fieldsByGroup = { CREW: [] as typeof cs.fields, CLIENT: [] as typeof cs.fields, LOGISTICS: [] as typeof cs.fields };
   for (const f of cs.fields.filter((f) => f.isVisible)) {
@@ -397,58 +431,138 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
   }
 
   const renderFieldBlock = (label: string, fields: typeof cs.fields, headerBg: string) => {
-    // Header
-    const hRow = ws.addRow([label, null, null, null]);
-    ws.mergeCells(`A${rowIdx}:D${rowIdx}`);
+    if (fields.length === 0) return;
+    const hRow = ws.addRow([label, null, null, null, null, null]);
+    mergeRow(rowIdx);
     hRow.height = 18;
     hRow.getCell(1).fill = fill(headerBg);
     hRow.getCell(1).font = wfont({ bold: true });
     hRow.getCell(1).alignment = { horizontal: 'center' };
     rowIdx++;
 
-    // Fields in two-column pairs
     for (let i = 0; i < fields.length; i += 2) {
       const f1 = fields[i];
       const f2 = fields[i + 1];
-      const row = ws.addRow([f1.label, f1.value ?? '', f2?.label ?? '', f2?.value ?? '']);
-      row.height = 18;
-      row.getCell(1).fill = fill(LIGHT_GREY);
-      row.getCell(1).font = font({ bold: true });
-      row.getCell(2).fill = fill('FFFFFF');
+      // Spread pairs across 3+3 columns: label | value | label | value (merge pairs)
+      const row = ws.addRow([f1.label, f1.value ?? '', null, f2?.label ?? '', f2?.value ?? '', null]);
+      ws.mergeCells(`B${rowIdx}:C${rowIdx}`);
+      ws.mergeCells(`E${rowIdx}:F${rowIdx}`);
+      row.height = 20;
+      row.getCell(1).fill = fill(BRAND_CREAM);
+      row.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
+      row.getCell(2).fill = fill(BRAND_WHITE);
       row.getCell(2).font = font();
-      row.getCell(3).fill = fill(LIGHT_GREY);
-      row.getCell(3).font = font({ bold: true });
-      row.getCell(4).fill = fill('FFFFFF');
-      row.getCell(4).font = font();
-      for (let c = 1; c <= 4; c++) {
-        row.getCell(c).border = { ...border(), top: { style: 'thin', color: { argb: `FF${BORDER_GREY}` } } };
+      row.getCell(4).fill = fill(BRAND_CREAM);
+      row.getCell(4).font = font({ bold: true, color: { argb: `FF${BRAND_DARK}` } });
+      row.getCell(5).fill = fill(BRAND_WHITE);
+      row.getCell(5).font = font();
+      for (let c = 1; c <= 6; c++) {
+        row.getCell(c).border = thinBorder(BORDER_GREY);
       }
       rowIdx++;
     }
   };
 
-  renderFieldBlock('CREW', fieldsByGroup.CREW, NAVY);
-  renderFieldBlock('CLIENT', fieldsByGroup.CLIENT, INDIGO);
+  renderFieldBlock('CREW', fieldsByGroup.CREW, BRAND_DARK);
+  renderFieldBlock('CLIENT', fieldsByGroup.CLIENT, BRAND_MID);
   renderFieldBlock('DAILY LOGISTICS', fieldsByGroup.LOGISTICS, typeColour);
 
-  // Spacer
-  const spacer = ws.addRow(['', null, null, null]);
-  ws.mergeCells(`A${rowIdx}:D${rowIdx}`);
-  spacer.getCell(1).fill = fill(LIGHT_GREY);
-  spacer.height = 8;
+  // ── Light Times & Weather ─────────────────────────────────────────────────
+
+  const hasSunTimes = cs.sunrise || cs.sunset || cs.goldenHourAm || cs.goldenHourPm || cs.blueHourAm || cs.blueHourPm;
+  const hasWeather  = cs.weatherData && (cs.weatherData.description || cs.weatherData.tempMax != null);
+
+  if (hasSunTimes || hasWeather) {
+    // Section header
+    const ltHdr = ws.addRow(['LIGHT TIMES & WEATHER', null, null, null, null, null]);
+    mergeRow(rowIdx);
+    ltHdr.height = 18;
+    ltHdr.getCell(1).fill = fill(BRAND_MID);
+    ltHdr.getCell(1).font = wfont({ bold: true });
+    ltHdr.getCell(1).alignment = { horizontal: 'center' };
+    ltHdr.getCell(1).border = { bottom: { style: 'medium', color: { argb: `FF${BRAND_TAN}` } } };
+    rowIdx++;
+
+    if (hasSunTimes) {
+      // Two rows: sunrise/sunset/golden AM  and  golden PM/blue AM/blue PM
+      const times1 = ws.addRow([
+        'Sunrise', cs.sunrise ?? '—', 'Sunset', cs.sunset ?? '—', 'Golden Hour AM', cs.goldenHourAm ?? '—',
+      ]);
+      times1.height = 20;
+      (['Sunrise', 'Sunset', 'Golden Hour AM'] as const).forEach((_, ci) => {
+        const labelCol = ci * 2 + 1;
+        const valCol = ci * 2 + 2;
+        times1.getCell(labelCol).fill = fill(BRAND_CREAM);
+        times1.getCell(labelCol).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        times1.getCell(valCol).fill = fill(BRAND_WHITE);
+        times1.getCell(valCol).font = font();
+        times1.getCell(valCol).alignment = { horizontal: 'center' };
+      });
+      rowIdx++;
+
+      const times2 = ws.addRow([
+        'Golden Hour PM', cs.goldenHourPm ?? '—', 'Blue Hour AM', cs.blueHourAm ?? '—', 'Blue Hour PM', cs.blueHourPm ?? '—',
+      ]);
+      times2.height = 20;
+      (['Golden Hour PM', 'Blue Hour AM', 'Blue Hour PM'] as const).forEach((_, ci) => {
+        const labelCol = ci * 2 + 1;
+        const valCol = ci * 2 + 2;
+        times2.getCell(labelCol).fill = fill(BRAND_CREAM);
+        times2.getCell(labelCol).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        times2.getCell(valCol).fill = fill(BRAND_WHITE);
+        times2.getCell(valCol).font = font();
+        times2.getCell(valCol).alignment = { horizontal: 'center' };
+      });
+      rowIdx++;
+    }
+
+    if (hasWeather) {
+      const w = cs.weatherData!;
+      const tempStr = [
+        w.tempMin != null ? `${w.tempMin}°` : null,
+        w.tempMax != null ? `${w.tempMax}°C` : null,
+      ].filter(Boolean).join(' – ') || '—';
+
+      const wRow = ws.addRow([
+        'Conditions', w.description ?? '—',
+        'Temp', tempStr,
+        w.precipitation != null ? 'Precipitation' : 'Wind',
+        w.precipitation != null ? `${w.precipitation} mm` : w.windSpeed != null ? `${w.windSpeed} km/h` : '—',
+      ]);
+      wRow.height = 20;
+      for (let ci = 0; ci < 3; ci++) {
+        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+        wRow.getCell(lc).fill = fill(BRAND_CREAM);
+        wRow.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+        wRow.getCell(vc).fill = fill(BRAND_WHITE);
+        wRow.getCell(vc).font = font();
+        wRow.getCell(vc).alignment = { horizontal: 'center' };
+      }
+      rowIdx++;
+    }
+  }
+
+  // ── Spacer ────────────────────────────────────────────────────────────────
+
+  const spacer = ws.addRow([null, null, null, null, null, null]);
+  mergeRow(rowIdx);
+  spacer.height = 6;
+  spacer.getCell(1).fill = fill(BRAND_TAN);
   rowIdx++;
 
-  // Shot list headers
-  const shotHdr = ws.addRow(['SHOT / LOCATION', 'TIMING', 'NOTES / DIRECTION', 'STATUS']);
+  // ── Shot list header ──────────────────────────────────────────────────────
+
+  const shotHdr = ws.addRow(['#', 'Shot / Description', 'Location', 'Timing', 'Notes', 'Status']);
   shotHdr.height = 20;
-  for (let c = 1; c <= 4; c++) {
-    shotHdr.getCell(c).fill = fill(NAVY);
-    shotHdr.getCell(c).font = wfont({ bold: true });
-    shotHdr.getCell(c).alignment = { horizontal: 'center' };
+  for (let c = 1; c <= 6; c++) {
+    shotHdr.getCell(c).fill = fill(BRAND_DARK);
+    shotHdr.getCell(c).font = wfont({ bold: true, size: 10 });
+    shotHdr.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
   }
   rowIdx++;
 
-  // Group shots by location
+  // ── Shots grouped by location ─────────────────────────────────────────────
+
   const shotsByLoc = new Map<string, { locName: string; shots: typeof cs.shots }>();
   for (const s of cs.shots.sort((a, b) => a.sortOrder - b.sortOrder)) {
     const locName = s.shot.location?.name ?? 'Unknown';
@@ -456,41 +570,56 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     shotsByLoc.get(locName)!.shots.push(s);
   }
 
+  let globalShotNum = 1;
+
   for (const { locName, shots } of shotsByLoc.values()) {
-    const locRow = ws.addRow([locName, null, null, null]);
-    ws.mergeCells(`A${rowIdx}:D${rowIdx}`);
-    locRow.height = 18;
-    locRow.getCell(1).fill = fill(LIGHT_GREY);
-    locRow.getCell(1).font = font({ bold: true });
+    // Location group header — #7A5C3A bold uppercase, #B89A7A bottom border
+    const locRow = ws.addRow([locName.toUpperCase(), null, null, null, null, null]);
+    mergeRow(rowIdx);
+    locRow.height = 20;
+    locRow.getCell(1).fill = fill(BRAND_CREAM);
+    locRow.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+    locRow.getCell(1).alignment = { indent: 1 };
+    locRow.getCell(1).border = { bottom: { style: 'medium', color: { argb: `FF${BRAND_TAN}` } } };
     rowIdx++;
 
     let si = 0;
     for (const cs_shot of shots) {
-      const bg = si % 2 === 0 ? 'FFFFFF' : OFF_WHITE;
+      const bg = si % 2 === 0 ? BRAND_WHITE : BRAND_CREAM;
+      const status = cs_shot.statusOverride ?? cs_shot.shot.status;
+      const statusChar = status === 'DONE' ? '✓' : '☐';
+
       const shotRow = ws.addRow([
+        globalShotNum,
         cs_shot.shot.description,
+        cs_shot.shot.location?.name ?? '',
         cs_shot.shot.timing ?? '',
         cs_shot.shot.notes ?? '',
-        cs_shot.statusOverride ?? cs_shot.shot.status,
+        statusChar,
       ]);
-      shotRow.height = 18;
-      for (let c = 1; c <= 4; c++) {
+      shotRow.height = 20;
+      for (let c = 1; c <= 6; c++) {
         shotRow.getCell(c).fill = fill(bg);
-        shotRow.getCell(c).font = font();
-        shotRow.getCell(c).border = border();
-        shotRow.getCell(c).alignment = { wrapText: true };
+        shotRow.getCell(c).font = font({ size: 10 });
+        shotRow.getCell(c).border = thinBorder();
+        shotRow.getCell(c).alignment = { wrapText: true, vertical: 'top' };
       }
+      shotRow.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+      shotRow.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
       si++;
+      globalShotNum++;
       rowIdx++;
     }
   }
 
-  // Footer
-  const footer = ws.addRow([`${project.agencyName ?? project.name} | CONFIDENTIAL`, null, null, null]);
-  ws.mergeCells(`A${rowIdx}:D${rowIdx}`);
+  // ── Footer ────────────────────────────────────────────────────────────────
+
+  const footerText = `${project.agencyName ?? project.name}  |  CONFIDENTIAL`;
+  const footer = ws.addRow([footerText, null, null, null, null, null]);
+  mergeRow(rowIdx);
   footer.height = 20;
-  footer.getCell(1).fill = fill(LIGHT_GREY);
-  footer.getCell(1).font = font({ italic: true });
+  footer.getCell(1).fill = fill(BRAND_CREAM);
+  footer.getCell(1).font = font({ italic: true, color: { argb: `FF${BRAND_MID}` } });
   footer.getCell(1).alignment = { horizontal: 'center' };
 }
 
@@ -519,6 +648,16 @@ export interface CallSheetData {
   shootingDayId: string;
   notes?: string | null;
   isLocked: boolean;
+  location?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  sunrise?: string | null;
+  sunset?: string | null;
+  goldenHourAm?: string | null;
+  goldenHourPm?: string | null;
+  blueHourAm?: string | null;
+  blueHourPm?: string | null;
+  weatherData?: { description?: string | null; tempMax?: number | null; tempMin?: number | null; precipitation?: number | null; windSpeed?: number | null } | null;
   fields: Array<{ id: string; label: string; value?: string | null; isVisible: boolean; sortOrder: number; fieldGroup: string }>;
   shots: Array<{
     id: string;
