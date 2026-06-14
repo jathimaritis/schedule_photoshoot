@@ -1,9 +1,10 @@
-import { Role } from '@prisma/client';
+import { Role, ModuleAccess } from '@prisma/client';
 
 export interface JwtPayload {
   userId: string;
   email: string;
   role: Role;
+  moduleAccess: ModuleAccess;
   organisationId: string;
 }
 

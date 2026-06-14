@@ -22,7 +22,7 @@ const changePasswordSchema = z.object({
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
-    select: { id: true, name: true, email: true, role: true, avatarUrl: true, createdAt: true, lastLoginAt: true, organisationId: true },
+    select: { id: true, name: true, email: true, role: true, moduleAccess: true, avatarUrl: true, createdAt: true, lastLoginAt: true, organisationId: true },
   });
   if (!user) { res.status(404).json({ error: 'User not found' }); return; }
   res.json(user);

@@ -75,10 +75,10 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
   });
 
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, role: 'OWNER', organisationId: org.id },
+    data: { name, email, passwordHash, role: 'OWNER', moduleAccess: 'BOTH', organisationId: org.id },
   });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, organisationId: org.id };
+  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: org.id };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -87,7 +87,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
   });
 
   setRefreshCookie(res, refreshToken);
-  res.status(201).json({ accessToken, user: { id: user.id, name, email, role: user.role, organisationId: org.id } });
+  res.status(201).json({ accessToken, user: { id: user.id, name, email, role: user.role, moduleAccess: user.moduleAccess, organisationId: org.id } });
 });
 
 router.post('/login', validate(loginSchema), async (req: Request, res: Response): Promise<void> => {
@@ -107,7 +107,7 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, organisationId: user.organisationId };
+  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -123,6 +123,7 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
       name: user.name,
       email: user.email,
       role: user.role,
+      moduleAccess: user.moduleAccess,
       organisationId: user.organisationId,
       avatarUrl: user.avatarUrl,
       organisation: { id: user.organisation.id, name: user.organisation.name, slug: user.organisation.slug, logoUrl: user.organisation.logoUrl },
@@ -162,7 +163,7 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
 
     await prisma.refreshToken.update({ where: { token }, data: { revokedAt: new Date() } });
 
-    const newPayload = { userId: user.id, email: user.email, role: user.role, organisationId: user.organisationId };
+    const newPayload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
     const accessToken = signAccessToken(newPayload);
     const refreshToken = signRefreshToken(newPayload);
 
@@ -219,12 +220,12 @@ router.post('/accept-invite/:token', validate(acceptInviteSchema), async (req: R
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
-    data: { name, email: invite.email, passwordHash, role: invite.role, organisationId: invite.organisationId },
+    data: { name, email: invite.email, passwordHash, role: invite.role, moduleAccess: 'NONE', organisationId: invite.organisationId },
   });
 
   await prisma.inviteToken.update({ where: { token }, data: { usedAt: new Date() } });
 
-  const payload = { userId: user.id, email: user.email, role: user.role, organisationId: user.organisationId };
+  const payload = { userId: user.id, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
 
@@ -233,7 +234,7 @@ router.post('/accept-invite/:token', validate(acceptInviteSchema), async (req: R
   });
 
   setRefreshCookie(res, refreshToken);
-  res.status(201).json({ accessToken, user: { id: user.id, name, email: user.email, role: user.role, organisationId: user.organisationId } });
+  res.status(201).json({ accessToken, user: { id: user.id, name, email: user.email, role: user.role, moduleAccess: user.moduleAccess, organisationId: user.organisationId } });
 });
 
 router.post('/forgot-password', validate(forgotPasswordSchema), async (req: Request, res: Response): Promise<void> => {

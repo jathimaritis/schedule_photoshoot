@@ -33,6 +33,13 @@ enum FieldGroup {
   LOGISTICS
 }
 
+enum ModuleAccess {
+  NONE
+  SCHEDULER
+  CALL_SHEET
+  BOTH
+}
+
 model Organisation {
   id               String    @id @default(cuid())
   name             String
@@ -46,6 +53,7 @@ model Organisation {
   createdAt        DateTime  @default(now())
   users            User[]
   projects         Project[]
+  productionCallSheets ProductionCallSheet[]
 }
 
 model User {
@@ -55,6 +63,7 @@ model User {
   name           String
   avatarUrl      String?
   role           Role         @default(VIEWER)
+  moduleAccess   ModuleAccess @default(NONE)
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   lastLoginAt    DateTime?
@@ -63,6 +72,7 @@ model User {
   projects       Project[]
   inviteTokens   InviteToken[]
   passwordResets PasswordReset[]
+  productionCallSheets ProductionCallSheet[]
 
   @@index([organisationId])
 }
@@ -281,5 +291,49 @@ model CallSheetShot {
   shotId         String
 
   @@unique([callSheetId, shotId])
+  @@index([callSheetId])
+}
+
+model ProductionCallSheet {
+  id             String    @id @default(cuid())
+  projectName    String
+  client         String?
+  location       String?
+  shootingDate   DateTime?
+  generalNotes   String?
+  sunrise        String?
+  sunset         String?
+  goldenHourAm   String?
+  goldenHourPm   String?
+  blueHourAm     String?
+  blueHourPm     String?
+  startOfDay     String?
+  breakfastTime  String?
+  lunchTime      String?
+  dinnerTime     String?
+  endOfDay       String?
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  organisationId String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  shots          ProductionShot[]
+
+  @@index([organisationId])
+  @@index([createdById])
+}
+
+model ProductionShot {
+  id               String   @id @default(cuid())
+  shootingLocation String?
+  description      String
+  timing           String?
+  notes            String?
+  status           ShotStatus @default(PENDING)
+  sortOrder        Int      @default(0)
+  callSheet        ProductionCallSheet @relation(fields: [callSheetId], references: [id], onDelete: Cascade)
+  callSheetId      String
+
   @@index([callSheetId])
 }

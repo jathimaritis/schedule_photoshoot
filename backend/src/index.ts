@@ -16,6 +16,7 @@ import shotsRouter from './routes/shots';
 import callSheetsRouter from './routes/callsheets';
 import exportRouter from './routes/export';
 import profileRouter from './routes/profile';
+import productionCallSheetsRouter from './routes/production-callsheets';
 import { errorHandler, notFound } from './middleware/error';
 
 const app = express();
@@ -47,6 +48,7 @@ app.use('/api/projects/:id/shots', shotsRouter);
 app.use('/api/projects/:id/callsheets', callSheetsRouter);
 app.use('/api/projects/:id/export', exportRouter);
 app.use('/api/profile', profileRouter);
+app.use('/api/production-callsheets', productionCallSheetsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -62,16 +64,29 @@ if (process.env.NODE_ENV === 'production') {
 app.use(notFound);
 app.use(errorHandler);
 
-async function start() {
-  // Apply any schema additions that the migration system may not have applied.
-  // Using IF NOT EXISTS makes this safe to run on every startup.
-  await prisma.$executeRawUnsafe(
-    `ALTER TABLE "ShootingDay" ADD COLUMN IF NOT EXISTS "headerColour" TEXT`
-  ).catch((e) => console.warn('Schema check warning:', e.message));
+async function applySchemaPatches() {
+  const patches: [string, string][] = [
+    ['ShootingDay.headerColour', `ALTER TABLE "ShootingDay" ADD COLUMN IF NOT EXISTS "headerColour" TEXT`],
+    ['Shot.notes', `ALTER TABLE "Shot" ADD COLUMN IF NOT EXISTS "notes" TEXT`],
+    ['ModuleAccess enum', `DO $$ BEGIN CREATE TYPE "ModuleAccess" AS ENUM ('NONE','SCHEDULER','CALL_SHEET','BOTH'); EXCEPTION WHEN duplicate_object THEN null; END $$`],
+    ['User.moduleAccess', `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "moduleAccess" "ModuleAccess" NOT NULL DEFAULT 'NONE'`],
+    ['User.moduleAccess owners', `UPDATE "User" SET "moduleAccess" = 'BOTH' WHERE "role" IN ('OWNER','ADMIN') AND "moduleAccess" = 'NONE'`],
+    ['ProductionCallSheet table', `CREATE TABLE IF NOT EXISTS "ProductionCallSheet" ("id" TEXT NOT NULL,"projectName" TEXT NOT NULL,"client" TEXT,"location" TEXT,"shootingDate" TIMESTAMP(3),"generalNotes" TEXT,"sunrise" TEXT,"sunset" TEXT,"goldenHourAm" TEXT,"goldenHourPm" TEXT,"blueHourAm" TEXT,"blueHourPm" TEXT,"startOfDay" TEXT,"breakfastTime" TEXT,"lunchTime" TEXT,"dinnerTime" TEXT,"endOfDay" TEXT,"organisationId" TEXT NOT NULL,"createdById" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "ProductionCallSheet_pkey" PRIMARY KEY ("id"))`],
+    ['ProductionShot table', `CREATE TABLE IF NOT EXISTS "ProductionShot" ("id" TEXT NOT NULL,"shootingLocation" TEXT,"description" TEXT NOT NULL,"timing" TEXT,"notes" TEXT,"status" "ShotStatus" NOT NULL DEFAULT 'PENDING',"sortOrder" INTEGER NOT NULL DEFAULT 0,"callSheetId" TEXT NOT NULL,CONSTRAINT "ProductionShot_pkey" PRIMARY KEY ("id"))`],
+    ['ProductionCallSheet org fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_organisationId_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_organisationId_fkey" FOREIGN KEY ("organisationId") REFERENCES "Organisation"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
+    ['ProductionCallSheet user fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionCallSheet_createdById_fkey') THEN ALTER TABLE "ProductionCallSheet" ADD CONSTRAINT "ProductionCallSheet_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; END IF; END $$`],
+    ['ProductionShot cs fk', `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ProductionShot_callSheetId_fkey') THEN ALTER TABLE "ProductionShot" ADD CONSTRAINT "ProductionShot_callSheetId_fkey" FOREIGN KEY ("callSheetId") REFERENCES "ProductionCallSheet"("id") ON DELETE CASCADE ON UPDATE CASCADE; END IF; END $$`],
+  ];
 
-  await prisma.$executeRawUnsafe(
-    `ALTER TABLE "Shot" ADD COLUMN IF NOT EXISTS "notes" TEXT`
-  ).catch((e) => console.warn('Schema check warning:', e.message));
+  for (const [name, sql] of patches) {
+    await prisma.$executeRawUnsafe(sql).catch((e: Error) =>
+      console.warn(`Schema patch [${name}] skipped:`, e.message)
+    );
+  }
+}
+
+async function start() {
+  await applySchemaPatches();
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV ?? 'development'} mode`);

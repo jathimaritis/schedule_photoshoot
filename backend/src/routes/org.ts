@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { Role } from '@prisma/client';
+import { Role, ModuleAccess } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { authenticate, requireMinRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -22,6 +22,10 @@ const updateRoleSchema = z.object({
   role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']),
 });
 
+const updateAccessSchema = z.object({
+  moduleAccess: z.enum(['NONE', 'SCHEDULER', 'CALL_SHEET', 'BOTH']),
+});
+
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   const org = await prisma.organisation.findUnique({ where: { id: req.user!.organisationId } });
   res.json(org);
@@ -38,7 +42,7 @@ router.put('/', requireMinRole('ADMIN'), validate(updateOrgSchema), async (req: 
 router.get('/users', requireMinRole('ADMIN'), async (req: Request, res: Response): Promise<void> => {
   const users = await prisma.user.findMany({
     where: { organisationId: req.user!.organisationId },
-    select: { id: true, name: true, email: true, role: true, avatarUrl: true, isActive: true, createdAt: true, lastLoginAt: true },
+    select: { id: true, name: true, email: true, role: true, moduleAccess: true, avatarUrl: true, isActive: true, createdAt: true, lastLoginAt: true },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -48,6 +52,18 @@ router.get('/users', requireMinRole('ADMIN'), async (req: Request, res: Response
   });
 
   res.json({ users, pendingInvites });
+});
+
+router.put('/users/:userId/access', requireMinRole('ADMIN'), validate(updateAccessSchema), async (req: Request, res: Response): Promise<void> => {
+  const { userId } = req.params;
+  const { moduleAccess } = req.body;
+
+  const target = await prisma.user.findFirst({ where: { id: userId, organisationId: req.user!.organisationId } });
+  if (!target) { res.status(404).json({ error: 'User not found' }); return; }
+  if (target.role === 'OWNER') { res.status(400).json({ error: 'Cannot change owner access' }); return; }
+
+  const updated = await prisma.user.update({ where: { id: userId }, data: { moduleAccess: moduleAccess as ModuleAccess } });
+  res.json({ id: updated.id, moduleAccess: updated.moduleAccess });
 });
 
 router.put('/users/:userId/role', requireMinRole('OWNER'), validate(updateRoleSchema), async (req: Request, res: Response): Promise<void> => {
@@ -81,9 +97,13 @@ router.delete('/users/:userId', requireMinRole('ADMIN'), async (req: Request, re
     res.status(404).json({ error: 'User not found' });
     return;
   }
+  if (target.role === 'OWNER') {
+    res.status(400).json({ error: 'Cannot delete the owner account' });
+    return;
+  }
 
-  await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
-  res.json({ message: 'User deactivated' });
+  await prisma.user.delete({ where: { id: userId } });
+  res.json({ message: 'User deleted' });
 });
 
 router.delete('/invites/:inviteId', requireMinRole('ADMIN'), async (req: Request, res: Response): Promise<void> => {

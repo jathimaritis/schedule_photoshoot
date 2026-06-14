@@ -7,6 +7,8 @@ export const orgApi = {
   getUsers: () => api.get<{ users: User[]; pendingInvites: InviteToken[] }>('/org/users').then((r) => r.data),
   updateRole: (userId: string, role: string) =>
     api.put(`/org/users/${userId}/role`, { role }).then((r) => r.data),
+  updateAccess: (userId: string, moduleAccess: string) =>
+    api.put(`/org/users/${userId}/access`, { moduleAccess }).then((r) => r.data),
   removeUser: (userId: string) => api.delete(`/org/users/${userId}`).then((r) => r.data),
   revokeInvite: (inviteId: string) => api.delete(`/org/invites/${inviteId}`).then((r) => r.data),
 };
