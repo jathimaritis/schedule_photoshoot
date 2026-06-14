@@ -6,6 +6,7 @@ services:
       cd frontend && npm install --include=dev && npm run build &&
       cd ../backend && npm install --include=dev && npx prisma generate && npm run build &&
       (npx prisma migrate resolve --rolled-back 20260521000000_init 2>/dev/null || true) &&
+      (npx prisma migrate resolve --applied 20260613000001_add_shot_notes 2>/dev/null || true) &&
       npx prisma migrate deploy
     startCommand: node backend/dist/index.js
     envVars:
