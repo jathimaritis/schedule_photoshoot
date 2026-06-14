@@ -6,7 +6,7 @@ services:
       cd frontend && npm install --include=dev && npm run build &&
       cd ../backend && npm install --include=dev && npx prisma generate && npm run build &&
       (npx prisma migrate resolve --rolled-back 20260521000000_init 2>/dev/null || true) &&
-      (echo "UPDATE \"_prisma_migrations\" SET \"rolled_back_at\" = NOW() WHERE \"migration_name\" = '20260613000001_add_shot_notes' AND \"rolled_back_at\" IS NULL AND \"finished_at\" IS NULL;" | npx prisma db execute --stdin 2>/dev/null || true) &&
+      (node scripts/fix-migration.js || true) &&
       npx prisma migrate deploy
     startCommand: node backend/dist/index.js
     envVars:
