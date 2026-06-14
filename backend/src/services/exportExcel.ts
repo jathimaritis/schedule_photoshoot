@@ -360,14 +360,32 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
 
   const mergeRow = (n: number) => ws.mergeCells(`A${n}:F${n}`);
 
-  // ── Logo (top-right) ──────────────────────────────────────────────────────
+  // ── Logo — row 1, left-aligned, proportional aspect ratio ───────────────
   if (project.logoUrl) {
     try {
       const m = project.logoUrl.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
       if (m) {
         const ext = m[1] === 'webp' ? 'png' : m[1] as 'png' | 'jpeg' | 'gif';
-        const imageId = wb.addImage({ base64: m[2], extension: ext });
-        ws.addImage(imageId, { tl: { col: 4.5, row: 0 }, ext: { width: 110, height: 44 } });
+        const base64 = m[2];
+
+        // Try to read PNG dimensions so we can maintain aspect ratio.
+        // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian).
+        let logoWidth = 160;
+        const logoHeight = 40;
+        if (m[1] === 'png') {
+          try {
+            const hdr = Buffer.from(base64.slice(0, 32), 'base64');
+            if (hdr[0] === 0x89 && hdr[1] === 0x50) { // valid PNG signature
+              const imgW = hdr.readUInt32BE(16);
+              const imgH = hdr.readUInt32BE(20);
+              if (imgW > 0 && imgH > 0) logoWidth = Math.round(logoHeight * (imgW / imgH));
+            }
+          } catch { /* use default */ }
+        }
+
+        const imageId = wb.addImage({ base64, extension: ext });
+        // tl col:0 = left edge of col A; row:0 = top of row 1 (the cream header row)
+        ws.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: logoWidth, height: logoHeight } });
       }
     } catch { /* skip */ }
   }
@@ -518,7 +536,15 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
     }
 
     if (hasWeather) {
-      const desc       = (w!.description ?? w!.conditions) as string | null | undefined;
+      // Safe string helper — guards against JS null *and* the string "null"
+      // that can appear when JSON null was serialised to a string somewhere.
+      const safeVal = (v: unknown, fallback = '—'): string => {
+        if (v == null) return fallback;
+        const s = String(v).trim();
+        return s === '' || s === 'null' || s === 'undefined' ? fallback : s;
+      };
+
+      const descVal    = safeVal(w!.description ?? w!.conditions);
       const tempMax    = w!.tempMax    as number | null | undefined;
       const tempMin    = w!.tempMin    as number | null | undefined;
       const precip     = w!.precipitation as number | null | undefined;
@@ -529,24 +555,41 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
         tempMax != null ? `${tempMax}°C` : null,
       ].filter(Boolean).join(' – ') || '—';
 
-      const precipWindStr = [
-        precip    != null ? `${precip} mm` : null,
-        windSpeed != null ? `${windSpeed} km/h` : null,
-      ].filter(Boolean).join('  /  ') || '—';
+      const styleWeatherRow = (row: ExcelJS.Row) => {
+        row.height = 20;
+        for (let ci = 0; ci < 3; ci++) {
+          const lc = ci * 2 + 1; const vc = ci * 2 + 2;
+          row.getCell(lc).fill = fill(BRAND_CREAM);
+          row.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+          row.getCell(vc).fill = fill(BRAND_WHITE);
+          row.getCell(vc).font = font();
+          row.getCell(vc).alignment = { horizontal: 'center' };
+        }
+      };
 
-      const wRow = ws.addRow([
-        'Conditions', desc ?? '—',
-        'Temp',       tempStr,
-        'Precip / Wind', precipWindStr,
+      // Row 1 of weather: Conditions | val | Temperature | val | Precipitation | val mm
+      const wRow1 = ws.addRow([
+        'Conditions',   descVal,
+        'Temperature',  tempStr,
+        'Precipitation', precip != null ? `${precip} mm` : '—',
       ]);
-      wRow.height = 20;
-      for (let ci = 0; ci < 3; ci++) {
-        const lc = ci * 2 + 1; const vc = ci * 2 + 2;
-        wRow.getCell(lc).fill = fill(BRAND_CREAM);
-        wRow.getCell(lc).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
-        wRow.getCell(vc).fill = fill(BRAND_WHITE);
-        wRow.getCell(vc).font = font();
-        wRow.getCell(vc).alignment = { horizontal: 'center' };
+      styleWeatherRow(wRow1);
+      rowIdx++;
+
+      // Row 2 of weather: Wind Speed | val km/h | (blank × 4)
+      const wRow2 = ws.addRow([
+        'Wind Speed', windSpeed != null ? `${windSpeed} km/h` : '—',
+        '', '', '', '',
+      ]);
+      wRow2.height = 20;
+      wRow2.getCell(1).fill = fill(BRAND_CREAM);
+      wRow2.getCell(1).font = font({ bold: true, color: { argb: `FF${BRAND_MID}` } });
+      wRow2.getCell(2).fill = fill(BRAND_WHITE);
+      wRow2.getCell(2).font = font();
+      wRow2.getCell(2).alignment = { horizontal: 'center' };
+      for (let c = 3; c <= 6; c++) {
+        wRow2.getCell(c).fill = fill(BRAND_CREAM);
+        wRow2.getCell(c).font = font();
       }
       rowIdx++;
     }
@@ -583,19 +626,28 @@ function addCallSheetSheet(wb: ExcelJS.Workbook, project: ScheduleProject, day: 
 
   for (const cs_shot of sortedShots) {
     const desc = cs_shot.shot.description;
-    // Skip rows with no meaningful description (null, empty, or 'None' from import)
-    if (!desc || desc.trim() === '' || desc.trim().toLowerCase() === 'none') continue;
+    // Skip rows with no meaningful description
+    if (!desc) continue;
+    const descNorm = desc.trim().toLowerCase();
+    if (descNorm === '' || descNorm === 'none' || descNorm === 'null' || descNorm === 'n/a') continue;
 
     const bg = shotNum % 2 === 0 ? BRAND_WHITE : BRAND_CREAM;
     const status = cs_shot.statusOverride ?? cs_shot.shot.status;
     const statusChar = status === 'DONE' ? '✓' : '☐';
 
+    // Sanitise string fields — replace import placeholders with empty strings
+    const cleanField = (v: string | null | undefined): string => {
+      if (!v) return '';
+      const n = v.trim().toLowerCase();
+      return n === 'none' || n === 'null' || n === 'n/a' ? '' : v.trim();
+    };
+
     const shotRow = ws.addRow([
       shotNum + 1,
       desc,
-      cs_shot.shot.location?.name ?? '',
-      cs_shot.shot.timing ?? '',
-      cs_shot.shot.notes ?? '',
+      cleanField(cs_shot.shot.location?.name),
+      cleanField(cs_shot.shot.timing),
+      cleanField(cs_shot.shot.notes),
       statusChar,
     ]);
     shotRow.height = 20;
